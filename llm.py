@@ -258,7 +258,7 @@ The problem to solve is: {problem}
             """
 
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "system", 
