@@ -8,6 +8,8 @@ from dotenv import load_dotenv  # Import dotenv
 
 import os
 
+from graph import generate_graph_from_query  # Import the graph generation function
+
 # Load environment variables from .env file
 load_dotenv()
 API_KEY = os.getenv("OPENAI_API_KEY")  # Get the API key from the environment
@@ -23,7 +25,9 @@ class Step(BaseModel):
     question: str
     answer: str
     explanation: str
-    hint_count: int = 0  # Add this to track hints per step
+    hint_count: int = 0
+    graph_query: str = None  # Add this to store the graph query
+    graph_image: bytes = None  # Add this to store the graph image data
 
 class MathSolution(BaseModel):
     steps: List[Step]
@@ -54,6 +58,12 @@ IMPORTANT FORMATTING RULES:
 - Complex expressions must be in LaTeX: $\\frac{{dx}}{{dy}}$, $\\int x^2 dx$
 - NEVER use plain text for mathematical symbols or expressions
 
+GRAPH QUERY RULES:
+- For most steps, show a graph to help the user understand a concept. Show graphs for steps with equations that can be represented as a graph
+- Generate a simple query for each graph, focusing on a single mathematical concept or function.
+- Do not include constants of integration or multiple expressions in a single query.
+- Ensure the query is suitable for a basic graphing calculator, using only the core equation or function.
+
 Example response format:
 "To find the derivative of $x^2$, we use the power rule. What is $\\frac{{d}}{{dx}}(x^2)$?"
 
@@ -83,7 +93,8 @@ The problem to solve is: {problem}
                                         "instruction": {"type": "string"},
                                         "question": {"type": "string"},
                                         "answer": {"type": "string"},
-                                        "explanation": {"type": "string"}
+                                        "explanation": {"type": "string"},
+                                        "graph_query": {"type": "string"}  # Add graph query to the schema
                                     },
                                     "required": ["instruction", "question", "answer", "explanation"],
                                     "additionalProperties": False
@@ -117,17 +128,29 @@ The problem to solve is: {problem}
                 
                 # Clean and format the final answer for LaTeX
                 final_answer = solution["final_answer"]
-                # Remove any existing $ delimiters
                 final_answer = final_answer.strip('$')
-                # Ensure proper LaTeX formatting
                 if '\\' not in final_answer and '^' in final_answer:
-                    # Convert simple power notation to LaTeX
                     final_answer = final_answer.replace('^', '^{') + '}'
                 solution["final_answer"] = final_answer
                 
+                # Process each step to generate graphs if needed
+                for step in solution["steps"]:
+                    graph_query = step.get("graph_query")
+                    print(f"Graph Query for Step: {graph_query}")  # Debug: Print the graph query
+
+                    if graph_query:
+                        try:
+                            # Generate the graph image
+                            graph_image = generate_graph_from_query(graph_query)
+                            step["graph_image"] = graph_image.getvalue()  # Store the image data
+                            print(f"Graph Image Generated for Step: {step['graph_image'] is not None}")  # Debug: Check if image is generated
+                        except Exception as e:
+                            logging.error(f"Error generating graph for step: {str(e)}")
+                            step["graph_image"] = None  # Set graph_image to None if generation fails
+                            print(f"Error generating graph for step: {str(e)}")  # Debug: Print error message
+
                 math_solution = MathSolution(**solution)
-                # Optionally add a reasonable upper limit
-                if len(math_solution.steps) > 10:  # or any other reasonable maximum
+                if len(math_solution.steps) > 10:
                     raise ValueError("Too many solution steps")
                 return math_solution
             else:
@@ -258,7 +281,7 @@ The problem to solve is: {problem}
             """
 
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4",
                 messages=[
                     {
                         "role": "system", 

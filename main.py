@@ -1,10 +1,8 @@
 import streamlit as st
 import time
-import streamlit.components.v1 as components
 import os
-from dotenv import load_dotenv  # Import dotenv
-
-from llm import MathSolver  # Import the MathSolver class
+from dotenv import load_dotenv
+from llm import MathSolver
 
 # Load environment variables from .env file
 load_dotenv()
@@ -254,9 +252,22 @@ def main():
                         "requires_input": False
                     })
 
+                    # Present the first step
+                    current_step = st.session_state.problem_state['current_step']
+                    step = st.session_state.problem_state['steps'][current_step]
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": f"**Step {current_step +1}:** {step.instruction}\n\n{step.question}",
+                        "timestamp": time.strftime("%H:%M"),
+                        "requires_input": True,
+                        "step_num": current_step
+                    })
+
                     # Clear user input
                     st.session_state.user_input = ''
-                    st.rerun()
+                    st.session_state.input_buffer = ''
+                    st.session_state.problem_state['awaiting_answer'] = True
+
                 except Exception as e:
                     st.error(f"Error processing problem: {str(e)}")
         else:
@@ -268,7 +279,6 @@ def main():
             # Use the validation function
             try:
                 is_correct = st.session_state.solver.validate_step_answer_llm(user_input, expected_answer)
-
             except Exception as e:
                 is_correct = False
 
@@ -276,7 +286,8 @@ def main():
             st.session_state.chat_history.append({
                 "role": "user",
                 "content": user_input,
-                "timestamp": time.strftime("%H:%M")
+                "timestamp": time.strftime("%H:%M"),
+                "step_num": current_step
             })
 
             if is_correct:
@@ -285,11 +296,13 @@ def main():
                     "role": "assistant",
                     "content": f"✅ Correct! {steps[current_step].explanation}",
                     "timestamp": time.strftime("%H:%M"),
-                    "requires_input": False
+                    "requires_input": False,
+                    "step_num": current_step
                 })
                 # Move to next step
                 st.session_state.problem_state['current_step'] += 1
                 st.session_state.user_input = ''
+                st.session_state.input_buffer = ''
                 if st.session_state.problem_state['current_step'] >= len(steps):
                     # All steps completed
                     st.session_state.chat_history.append({
@@ -310,44 +323,35 @@ def main():
                     }
                 else:
                     # Present next step
-                    next_step = st.session_state.problem_state['steps'][st.session_state.problem_state['current_step']]
+                    next_step_num = st.session_state.problem_state['current_step']
+                    next_step = st.session_state.problem_state['steps'][next_step_num]
                     st.session_state.chat_history.append({
                         "role": "assistant",
-                        "content": f"**Step {st.session_state.problem_state['current_step'] + 1}:** {next_step.instruction}\n\n{next_step.question}",
+                        "content": f"**Step {next_step_num +1}:** {next_step.instruction}\n\n{next_step.question}",
                         "timestamp": time.strftime("%H:%M"),
-                        "requires_input": True
+                        "requires_input": True,
+                        "step_num": next_step_num
                     })
-                st.rerun()
+                    st.session_state.problem_state['awaiting_answer'] = True
             else:
                 # Incorrect answer
                 st.session_state.chat_history.append({
                     "role": "assistant",
                     "content": f"❌ That's not quite right. Try again!",
                     "timestamp": time.strftime("%H:%M"),
-                    "requires_input": True
+                    "requires_input": True,
+                    "step_num": current_step
                 })
                 st.session_state.user_input = ''
-                st.rerun()
-
-    # If we have steps and awaiting user's answer
-    if st.session_state.problem_state['steps'] is not None and st.session_state.problem_state['awaiting_answer']:
-        # Present current step if not already presented
-        if not any(msg.get('requires_input') for msg in st.session_state.chat_history if msg['role'] == 'assistant'):
-            current_step = st.session_state.problem_state['current_step']
-            next_step = st.session_state.problem_state['steps'][current_step]
-            st.session_state.chat_history.append({
-                "role": "assistant",
-                "content": f"**Step {current_step + 1}:** {next_step.instruction}\n\n{next_step.question}",
-                "timestamp": time.strftime("%H:%M"),
-                "requires_input": True
-            })
+                st.session_state.input_buffer = ''
+        # Reset states on submit
+        st.rerun()
 
     # Display chat history
     with chat_container:
         for idx, message in enumerate(st.session_state.chat_history):
             with st.chat_message(message["role"]):
-                st.markdown(f"<div class='step-indicator'>{message['timestamp']}</div>",
-                            unsafe_allow_html=True)
+                st.markdown(f"<div class='step-indicator'>{message['timestamp']}</div>", unsafe_allow_html=True)
 
                 if message["role"] == "user":
                     # Display user messages as regular text
@@ -370,38 +374,46 @@ def main():
                         final_answer = final_answer.strip().strip('$')
                         st.latex(final_answer)
                     else:
-                        # Split the content into text and LaTeX parts
-                        parts = content.split("$")
+                        # Use columns to align text and graph
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            # Split the content into text and LaTeX parts
+                            parts = content.split("$")
+                            for i, part in enumerate(parts):
+                                if i % 2 == 0:  # Regular text
+                                    if part.strip():  # Only display if not empty
+                                        if part.startswith("Step"):
+                                            st.markdown(f"**{part}**")
+                                        else:
+                                            st.write(part.strip())
+                                else:  # LaTeX expression
+                                    if part.strip():  # Only display if not empty
+                                        st.latex(part.strip())
 
-                        for i, part in enumerate(parts):
-                            if i % 2 == 0:  # Regular text
-                                if part.strip():  # Only display if not empty
-                                    if part.startswith("Step"):
-                                        st.markdown(f"**{part}**")
-                                    else:
-                                        st.write(part.strip())
-                            else:  # LaTeX expression
-                                if part.strip():  # Only display if not empty
-                                    st.latex(part.strip())
+                        # Display graph image if available and it's a step question
+                        with col2:
+                            if message.get("requires_input"):
+                                step_num = message.get("step_num")
+                                if st.session_state.problem_state['steps'] and step_num < len(st.session_state.problem_state['steps']):
+                                    step = st.session_state.problem_state['steps'][step_num]
+                                    if step.graph_image:
+                                        st.image(step.graph_image, caption="Graph for this step")
 
+                # Right-aligned Ask Raze expander
                 if message.get("requires_input"):
-                    # Right-aligned Ask Raze expander
                     with st.container():
                         col1, col2 = st.columns([7, 3])
                         with col2:
                             with st.expander("Ask Raze 🤖"):
-                                col1, col2 = st.columns([1, 1])
-                                
-                                # Get step number for both hint types
-                                step_num = None
+                                # Get step number
+                                step_num = message.get("step_num")
                                 current_step = None
-                                if "Step " in message["content"]:
-                                    try:
-                                        step_num = int(message["content"].split("Step ")[1].split(":")[0]) - 1
+                                if step_num is not None:
+                                    if st.session_state.problem_state['steps'] and step_num < len(st.session_state.problem_state['steps']):
                                         current_step = st.session_state.problem_state['steps'][step_num]
-                                    except (IndexError, ValueError, AttributeError):
-                                        st.write("Error: Could not determine current step.")
-                                        return
+                                else:
+                                    st.write("Error: Could not determine current step.")
+                                    continue
 
                                 # Initialize session state for this step if needed
                                 step_key = f"show_question_input_{step_num}"
@@ -414,7 +426,7 @@ def main():
                                         if remaining_hints > 0:
                                             hint = current_step.explanation
                                             current_step.hint_count += 1
-                                            
+
                                             # Display hint with proper LaTeX formatting
                                             hint_parts = hint.split("$")
                                             for i, part in enumerate(hint_parts):
@@ -431,51 +443,63 @@ def main():
                                     if st.button("Ask Custom Question", key=f"custom_{idx}"):
                                         st.session_state[step_key] = not st.session_state[step_key]
 
-                                if st.session_state[step_key]:
-                                    # Get previous attempts for this step
-                                    previous_attempts = [
-                                        msg["content"] 
-                                        for msg in st.session_state.chat_history 
-                                        if msg["role"] == "user" and 
-                                        msg.get("step_num") == step_num
-                                    ]
+                                    if st.session_state[step_key]:
+                                        # Get previous attempts for this step
+                                        previous_attempts = [
+                                            msg["content"]
+                                            for msg in st.session_state.chat_history
+                                            if msg["role"] == "user" and
+                                            msg.get("step_num") == step_num
+                                        ]
 
-                                    user_question = st.text_input(
-                                        "",  # Label hidden
-                                        key=f"hint_input_{idx}",
-                                        placeholder="Need clarification? Ask Raze..."
-                                    )
-                                    
-                                    if st.button("Ask", key=f"ask_{idx}"):
-                                        remaining_hints = max(0, 3 - current_step.hint_count)
-                                        if remaining_hints > 0:
-                                            hint = st.session_state.solver.generate_custom_hint(
-                                                current_step,
-                                                user_question,
-                                                previous_attempts
-                                            )
-                                            current_step.hint_count += 1
-                                            
-                                            # Display hint with proper LaTeX formatting
-                                            hint_parts = hint.split("$")
-                                            for i, part in enumerate(hint_parts):
-                                                if i % 2 == 0:  # Regular text
-                                                    if part.strip():
-                                                        st.write(part.strip())
-                                                else:  # LaTeX expression
-                                                    if part.strip():
-                                                        st.latex(part.strip())
-                                        else:
-                                            st.warning("You've reached the maximum number of hints for this step.")
+                                        user_question = st.text_input(
+                                            "",  # Label hidden
+                                            key=f"hint_input_{idx}",
+                                            placeholder="Need clarification? Ask Raze..."
+                                        )
+
+                                        if st.button("Ask", key=f"ask_{idx}"):
+                                            remaining_hints = max(0, 3 - current_step.hint_count)
+                                            if remaining_hints > 0:
+                                                hint = st.session_state.solver.generate_custom_hint(
+                                                    current_step,
+                                                    user_question,
+                                                    previous_attempts
+                                                )
+                                                current_step.hint_count += 1
+
+                                                # Display hint with proper LaTeX formatting
+                                                hint_parts = hint.split("$")
+                                                for i, part in enumerate(hint_parts):
+                                                    if i % 2 == 0:  # Regular text
+                                                        if part.strip():
+                                                            st.write(part.strip())
+                                                    else:  # LaTeX expression
+                                                        if part.strip():
+                                                            st.latex(part.strip())
+                                            else:
+                                                st.warning("You've reached the maximum number of hints for this step.")
 
                                 # Display hint count
                                 if current_step:
                                     remaining_hints = max(0, 3 - current_step.hint_count)
                                     st.caption(f"Remaining hints: {remaining_hints}")
 
-    # Reset states on submit
-    if submit_button and user_input:
-        st.rerun()
+    # If we have steps and awaiting user's answer, but haven't presented the current step yet
+    if st.session_state.problem_state['steps'] is not None and st.session_state.problem_state['awaiting_answer']:
+        # Check if the last message from assistant requires input
+        if not any(msg.get('requires_input') for msg in st.session_state.chat_history[-1:]):
+            # Present current step if not already presented
+            current_step = st.session_state.problem_state['current_step']
+            step = st.session_state.problem_state['steps'][current_step]
+            st.session_state.chat_history.append({
+                "role": "assistant",
+                "content": f"**Step {current_step +1}:** {step.instruction}\n\n{step.question}",
+                "timestamp": time.strftime("%H:%M"),
+                "requires_input": True,
+                "step_num": current_step
+            })
+            st.rerun()
 
 if __name__ == "__main__":
     main()
