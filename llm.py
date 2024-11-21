@@ -1,5 +1,5 @@
 import openai
-from typing import List
+from typing import List, Dict
 from pydantic import BaseModel
 import json
 import logging
@@ -28,6 +28,10 @@ class Step(BaseModel):
     hint_count: int = 0
     graph_query: str = None  # Add this to store the graph query
     graph_image: bytes = None  # Add this to store the graph image data
+    attempt_count: int = 0
+    user_attempts: List[Dict] = []
+    user_correct: bool = False
+
 
 class MathSolution(BaseModel):
     steps: List[Step]
@@ -211,7 +215,7 @@ The problem to solve is: {problem}
             ]
 
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "system", 
@@ -306,6 +310,66 @@ The problem to solve is: {problem}
 
         except Exception as e:
             return f"Error generating hint: {str(e)}"
+
+    def generate_problem_summary(self, solution: MathSolution) -> str:
+        """
+        Generate a problem summary using the LLM, highlighting correct and incorrect steps.
+        """
+        try:
+            # Prepare the data for the prompt
+            steps_info = ""
+            for idx, step in enumerate(solution.steps):
+                performance = "correct" if step.user_correct else "incorrect"
+                attempts_text = "\n".join([
+                    f"Attempt {i+1}: {'Correct' if attempt['is_correct'] else 'Incorrect'} - {attempt['user_answer']}"
+                    for i, attempt in enumerate(step.user_attempts)
+                ])
+                steps_info += f"""
+Step {idx + 1}:
+Instruction: {step.instruction}
+Question: {step.question}
+Your Attempts:
+{attempts_text}
+Performance: {performance}
+"""
+
+            prompt = f"""
+The student has completed solving the following problem:
+
+Problem: {solution.original_problem}
+
+Here is their performance on each step:
+{steps_info}
+
+Provide a summary that:
+- Commends the student on the steps they did correctly.
+- Gently points out the steps they struggled with.
+- Offers advice on areas to review or study further.
+- Uses encouraging and supportive language.
+- Does not reveal any additional answers or solutions.
+"""
+
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an encouraging math tutor providing a summary of the student's performance."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.7
+            )
+
+            summary = response.choices[0].message.content
+            return summary
+
+        except Exception as e:
+            logging.error(f"Error generating problem summary: {str(e)}")
+            return "An error occurred while generating the problem summary."
 
 
 # Example usage
