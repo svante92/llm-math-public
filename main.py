@@ -1,10 +1,10 @@
 import streamlit as st
 import time
 import os
-from dotenv import load_dotenv
-from llm import MathSolver, MathSolution, Step  # Import MathSolution and Step
 import json
-from sheets import append_data_to_sheet
+from dotenv import load_dotenv
+from llm import MathSolver, MathSolution, Step  # Ensure llm.py is correctly imported
+from sheets import append_data_to_sheet  # Ensure sheets.py is correctly imported
 
 # Load environment variables from .env file
 load_dotenv()
@@ -29,19 +29,31 @@ if 'problem_state' not in st.session_state:
         'variables': set(),
         'awaiting_answer': False,
         'final_answer': None,
-        'solution': None  # New: Store the MathSolution object
+        'solution': None  # Store the MathSolution object
     }
 
 # Initialize the MathSolver instance
 if 'solver' not in st.session_state:
     st.session_state.solver = MathSolver(API_KEY)  # Use the API key from the environment
 
-# Initialize session state
+# Initialize session state variables for input
 if 'input_buffer' not in st.session_state:
-    st.session_state.input_buffer = ""
+    st.session_state.input_buffer = ''
+
+if 'input_box' not in st.session_state:
+    st.session_state.input_box = ''
+
+if 'user_input_submitted' not in st.session_state:
+    st.session_state.user_input_submitted = False
+
+if 'reset_input_box' not in st.session_state:
+    st.session_state.reset_input_box = False
 
 if 'show_feedback_form' not in st.session_state:
     st.session_state.show_feedback_form = False
+
+def update_input_buffer():
+    st.session_state.input_buffer = st.session_state.input_box
 
 def create_calculator_sidebar():
     """Create the calculator sidebar with all buttons"""
@@ -71,6 +83,8 @@ def create_calculator_sidebar():
                     st.session_state.input_buffer += "Σ_{i=1}^n () "  # Summation template
                 else:
                     st.session_state.input_buffer += f" {op} "
+                # Update the input box content
+                st.session_state.input_box = st.session_state.input_buffer
 
     # Functions
     st.sidebar.subheader("Functions")
@@ -81,10 +95,13 @@ def create_calculator_sidebar():
             st.latex(func)
             if st.button(func, key=f"func_{func}", use_container_width=True):
                 st.session_state.input_buffer += f"{func}("
+                # Update the input box content
+                st.session_state.input_box = st.session_state.input_buffer
 
     # Clear button
     if st.sidebar.button("Clear", key="clear_expr", use_container_width=True):
         st.session_state.input_buffer = ""
+        st.session_state.input_box = ""
 
     # Add a spacer for better layout
     st.sidebar.markdown("---")
@@ -132,7 +149,7 @@ def main():
             min-height: 40px;
         }
 
-        /* Center the input form */
+        /* Center the input container */
         .input-container {
             display: flex;
             justify-content: center;
@@ -212,209 +229,145 @@ def main():
     # Create calculator sidebar
     create_calculator_sidebar()
 
+    # Handle resetting the input box before rendering the input widget
+    if st.session_state.reset_input_box:
+        st.session_state.input_box = ''
+        st.session_state.reset_input_box = False
+
     # Main chat container
     chat_container = st.container()
 
-    # Input area at the bottom with a form
+    # Input area at the bottom without a form
     with st.container():
-        with st.form(key='input_form', clear_on_submit=True):
-            user_input = st.text_input("Your Input:", value=st.session_state.input_buffer)
-            submit_button = st.form_submit_button(label='Submit')
+        # Input box with on_change callback
+        user_input = st.text_input(
+            "Your Input:",
+            value=st.session_state.input_buffer,
+            key='input_box',
+            on_change=update_input_buffer
+        )
+        # Submit button
+        submit_button = st.button('Submit', key='submit_button')
 
-    # Process the input when the form is submitted
-    if submit_button and user_input:
-        # Update session state
-        st.session_state.input_buffer = ''  # Clear the input buffer after submission
-        st.session_state.user_input = user_input  # Set the user input for processing
+    # If submit button is clicked, set user_input_submitted to True
+    if submit_button:
+        st.session_state.user_input_submitted = True
+
+    # Process the input when user_input_submitted is True
+    if st.session_state.user_input_submitted:
+        # Reset the flag
+        st.session_state.user_input_submitted = False
+        # Get the user input
+        user_input = st.session_state.input_box
+        st.session_state.user_input = user_input
 
         # Process the input
-        user_input = st.session_state.user_input
+        if user_input:
+            # Check if we're awaiting the problem or an answer to a step
+            if st.session_state.problem_state['steps'] is None:
+                # User has input the original problem
+                st.session_state.problem_state['original_problem'] = user_input
 
-        # Check if we're awaiting the problem or an answer to a step
-        if st.session_state.problem_state['steps'] is None:
-            # User has input the original problem
-            st.session_state.problem_state['original_problem'] = user_input
+                # Process the problem using MathSolver
+                with st.spinner("Processing the problem..."):
+                    try:
+                        # Use the solver from session state
+                        solution = st.session_state.solver.get_math_solution(user_input)
+                        st.session_state.problem_state['steps'] = solution.steps
+                        st.session_state.problem_state['final_answer'] = solution.final_answer
+                        st.session_state.problem_state['current_step'] = 0
+                        st.session_state.problem_state['awaiting_answer'] = True
+                        st.session_state.problem_state['solution'] = solution  # Store the solution
 
-            # Process the problem using MathSolver
-            with st.spinner("Processing the problem..."):
+                        # Add assistant's message introducing the problem
+                        st.session_state.chat_history.append({
+                            "role": "assistant",
+                            "content": f"Let's solve this problem step by step: {solution.original_problem}",
+                            "timestamp": time.strftime("%H:%M"),
+                            "requires_input": False
+                        })
+
+                        # Present the first step
+                        current_step = st.session_state.problem_state['current_step']
+                        step = st.session_state.problem_state['steps'][current_step]
+                        st.session_state.chat_history.append({
+                            "role": "assistant",
+                            "content": f"**Step {current_step +1}:** {step.instruction}\n\n{step.question}",
+                            "timestamp": time.strftime("%H:%M"),
+                            "requires_input": True,
+                            "step_num": current_step
+                        })
+
+                        # Clear user input
+                        st.session_state.user_input = ''
+                        st.session_state.input_buffer = ''
+                        st.session_state.reset_input_box = True
+                        st.session_state.problem_state['awaiting_answer'] = True
+
+                        # Save initial problem data
+                        data = {
+                            "original_problem": user_input,
+                            "current_step": 0,
+                            "user_input": user_input,
+                            "correct_answer": None,
+                            "hint": None,
+                            "final_answer": solution.final_answer,
+                            "problem_summary": None,
+                            "user_feedback": "Started new problem"
+                        }
+                        append_data_to_sheet(json.dumps(data))
+
+                    except Exception as e:
+                        st.error(f"Error processing problem: {str(e)}")
+            else:
+                # User has input an answer to a step
+                current_step_index = st.session_state.problem_state['current_step']
+                steps = st.session_state.problem_state['steps']
+                current_step = steps[current_step_index]
+                expected_answer = current_step.answer
+
+                # Use the validation function
                 try:
-                    # Use the solver from session state
-                    solution = st.session_state.solver.get_math_solution(user_input)
-                    st.session_state.problem_state['steps'] = solution.steps
-                    st.session_state.problem_state['final_answer'] = solution.final_answer
-                    st.session_state.problem_state['current_step'] = 0
-                    st.session_state.problem_state['awaiting_answer'] = True
-                    st.session_state.problem_state['solution'] = solution  # Store the solution
-
-                    # Add assistant's message introducing the problem
-                    st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "content": f"Let's solve this problem step by step: {solution.original_problem}",
-                        "timestamp": time.strftime("%H:%M"),
-                        "requires_input": False
-                    })
-
-                    # Present the first step
-                    current_step = st.session_state.problem_state['current_step']
-                    step = st.session_state.problem_state['steps'][current_step]
-                    st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "content": f"**Step {current_step +1}:** {step.instruction}\n\n{step.question}",
-                        "timestamp": time.strftime("%H:%M"),
-                        "requires_input": True,
-                        "step_num": current_step
-                    })
-
-                    # Clear user input
-                    st.session_state.user_input = ''
-                    st.session_state.input_buffer = ''
-                    st.session_state.problem_state['awaiting_answer'] = True
-
-                    # Save initial problem data
-                    data = {
-                        "original_problem": user_input,
-                        "current_step": 0,
-                        "user_input": user_input,
-                        "correct_answer": None,
-                        "hint": None,
-                        "final_answer": solution.final_answer,
-                        "problem_summary": None,
-                        "user_feedback": "Started new problem"
-                    }
-                    append_data_to_sheet(json.dumps(data))
-
+                    is_correct = st.session_state.solver.validate_step_answer_llm(user_input, expected_answer)
                 except Exception as e:
-                    st.error(f"Error processing problem: {str(e)}")
-        else:
-            # User has input an answer to a step
-            current_step_index = st.session_state.problem_state['current_step']
-            steps = st.session_state.problem_state['steps']
-            current_step = steps[current_step_index]
-            expected_answer = current_step.answer
+                    is_correct = False
 
-            # Use the validation function
-            try:
-                is_correct = st.session_state.solver.validate_step_answer_llm(user_input, expected_answer)
-            except Exception as e:
-                is_correct = False
+                # Record the attempt
+                current_step.attempt_count += 1
+                current_step.user_attempts.append({
+                    'attempt_number': current_step.attempt_count,
+                    'user_answer': user_input,
+                    'is_correct': is_correct
+                })
 
-            # Record the attempt
-            current_step.attempt_count += 1
-            current_step.user_attempts.append({
-                'attempt_number': current_step.attempt_count,
-                'user_answer': user_input,
-                'is_correct': is_correct
-            })
-
-            # Add user's answer to chat history
-            st.session_state.chat_history.append({
-                "role": "user",
-                "content": user_input,
-                "timestamp": time.strftime("%H:%M"),
-                "step_num": current_step_index
-            })
-
-            if is_correct:
-                # Correct answer
-                current_step.user_correct = True  # Update user_correct attribute
+                # Add user's answer to chat history
                 st.session_state.chat_history.append({
-                    "role": "assistant",
-                    "content": f"✅ Correct! {current_step.explanation}",
+                    "role": "user",
+                    "content": user_input,
                     "timestamp": time.strftime("%H:%M"),
-                    "requires_input": False,
                     "step_num": current_step_index
                 })
-                # Move to next step
-                st.session_state.problem_state['current_step'] += 1
-                st.session_state.user_input = ''
-                st.session_state.input_buffer = ''
-                if st.session_state.problem_state['current_step'] >= len(steps):
-                    # All steps completed
+
+                if is_correct:
+                    # Correct answer
+                    current_step.user_correct = True  # Update user_correct attribute
                     st.session_state.chat_history.append({
                         "role": "assistant",
-                        "content": f"Great job! The final answer is: {st.session_state.problem_state['final_answer']}",
-                        "timestamp": time.strftime("%H:%M"),
-                        "requires_input": False
-                    })
-
-                    # Generate and display problem summary
-                    with st.spinner("Generating problem summary..."):
-                        summary = st.session_state.solver.generate_problem_summary(
-                            st.session_state.problem_state['solution']
-                        )
-                    st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "content": summary,
-                        "timestamp": time.strftime("%H:%M"),
-                        "requires_input": False
-                    })
-
-                    # Set flag to show feedback form
-                    st.session_state.show_feedback_form = True
-
-                    # Save final summary data
-                    data = {
-                        "original_problem": st.session_state.problem_state['original_problem'],
-                        "current_step": "complete",
-                        "user_input": user_input,
-                        "correct_answer": expected_answer,
-                        "hint": None,
-                        "final_answer": st.session_state.problem_state['final_answer'],
-                        "problem_summary": summary,
-                        "user_feedback": "Problem completed"
-                    }
-                    append_data_to_sheet(json.dumps(data))
-
-                else:
-                    # Present next step
-                    next_step_num = st.session_state.problem_state['current_step']
-                    next_step = st.session_state.problem_state['steps'][next_step_num]
-                    st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "content": f"**Step {next_step_num +1}:** {next_step.instruction}\n\n{next_step.question}",
-                        "timestamp": time.strftime("%H:%M"),
-                        "requires_input": True,
-                        "step_num": next_step_num
-                    })
-                    st.session_state.problem_state['awaiting_answer'] = True
-
-                # Save correct answer interaction
-                data = {
-                    "original_problem": st.session_state.problem_state['original_problem'],
-                    "current_step": current_step_index + 1,
-                    "user_input": user_input,
-                    "correct_answer": expected_answer,
-                    "hint": current_step.explanation if current_step.hint_count > 0 else None,
-                    "final_answer": st.session_state.problem_state['final_answer'],
-                    "problem_summary": None,
-                    "user_feedback": "Correct answer"
-                }
-                append_data_to_sheet(json.dumps(data))
-
-            else:
-                # Incorrect answer
-                remaining_attempts = 3 - current_step.attempt_count
-
-                if current_step.attempt_count >= 3:
-                    # Provide the correct answer and move to next step
-                    st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "content": f"❌ That's not quite right. The correct answer is: {expected_answer}",
+                        "content": f"✅ Correct! {current_step.explanation}",
                         "timestamp": time.strftime("%H:%M"),
                         "requires_input": False,
                         "step_num": current_step_index
                     })
-                    current_step.user_correct = False  # Update user_correct attribute
-
                     # Move to next step
                     st.session_state.problem_state['current_step'] += 1
                     st.session_state.user_input = ''
                     st.session_state.input_buffer = ''
+                    st.session_state.reset_input_box = True
                     if st.session_state.problem_state['current_step'] >= len(steps):
                         # All steps completed
                         st.session_state.chat_history.append({
                             "role": "assistant",
-                            "content": f"The final answer is: {st.session_state.problem_state['final_answer']}",
+                            "content": f"Great job! The final answer is: {st.session_state.problem_state['final_answer']}",
                             "timestamp": time.strftime("%H:%M"),
                             "requires_input": False
                         })
@@ -459,44 +412,128 @@ def main():
                             "step_num": next_step_num
                         })
                         st.session_state.problem_state['awaiting_answer'] = True
-                else:
-                    # Less than 3 attempts, allow retry
-                    st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "content": f"❌ That's not quite right. Try again! You have {remaining_attempts} attempts left.",
-                        "timestamp": time.strftime("%H:%M"),
-                        "requires_input": True,
-                        "step_num": current_step_index
-                    })
-                    st.session_state.user_input = ''
-                    st.session_state.input_buffer = ''
 
-                # Save incorrect answer interaction
-                data = {
-                    "original_problem": st.session_state.problem_state['original_problem'],
-                    "current_step": current_step_index + 1,
-                    "user_input": user_input,
-                    "correct_answer": expected_answer,
-                    "hint": current_step.explanation if current_step.hint_count > 0 else None,
-                    "final_answer": st.session_state.problem_state['final_answer'],
-                    "problem_summary": None,
-                    "user_feedback": f"Incorrect answer (Attempt {current_step.attempt_count})"
-                }
-                append_data_to_sheet(json.dumps(data))
-
-                if current_step.attempt_count >= 3:
-                    # Save failed step data
+                    # Save correct answer interaction
                     data = {
                         "original_problem": st.session_state.problem_state['original_problem'],
                         "current_step": current_step_index + 1,
                         "user_input": user_input,
                         "correct_answer": expected_answer,
-                        "hint": current_step.explanation,
+                        "hint": current_step.explanation if current_step.hint_count > 0 else None,
                         "final_answer": st.session_state.problem_state['final_answer'],
                         "problem_summary": None,
-                        "user_feedback": "Max attempts reached, showing solution"
+                        "user_feedback": "Correct answer"
                     }
                     append_data_to_sheet(json.dumps(data))
+
+                else:
+                    # Incorrect answer
+                    remaining_attempts = 3 - current_step.attempt_count
+
+                    if current_step.attempt_count >= 3:
+                        # Provide the correct answer and move to next step
+                        st.session_state.chat_history.append({
+                            "role": "assistant",
+                            "content": f"❌ That's not quite right. The correct answer is: {expected_answer}",
+                            "timestamp": time.strftime("%H:%M"),
+                            "requires_input": False,
+                            "step_num": current_step_index
+                        })
+                        current_step.user_correct = False  # Update user_correct attribute
+
+                        # Move to next step
+                        st.session_state.problem_state['current_step'] += 1
+                        st.session_state.user_input = ''
+                        st.session_state.input_buffer = ''
+                        st.session_state.reset_input_box = True
+                        if st.session_state.problem_state['current_step'] >= len(steps):
+                            # All steps completed
+                            st.session_state.chat_history.append({
+                                "role": "assistant",
+                                "content": f"The final answer is: {st.session_state.problem_state['final_answer']}",
+                                "timestamp": time.strftime("%H:%M"),
+                                "requires_input": False
+                            })
+
+                            # Generate and display problem summary
+                            with st.spinner("Generating problem summary..."):
+                                summary = st.session_state.solver.generate_problem_summary(
+                                    st.session_state.problem_state['solution']
+                                )
+                            st.session_state.chat_history.append({
+                                "role": "assistant",
+                                "content": summary,
+                                "timestamp": time.strftime("%H:%M"),
+                                "requires_input": False
+                            })
+
+                            # Set flag to show feedback form
+                            st.session_state.show_feedback_form = True
+
+                            # Save final summary data
+                            data = {
+                                "original_problem": st.session_state.problem_state['original_problem'],
+                                "current_step": "complete",
+                                "user_input": user_input,
+                                "correct_answer": expected_answer,
+                                "hint": None,
+                                "final_answer": st.session_state.problem_state['final_answer'],
+                                "problem_summary": summary,
+                                "user_feedback": "Problem completed"
+                            }
+                            append_data_to_sheet(json.dumps(data))
+
+                        else:
+                            # Present next step
+                            next_step_num = st.session_state.problem_state['current_step']
+                            next_step = st.session_state.problem_state['steps'][next_step_num]
+                            st.session_state.chat_history.append({
+                                "role": "assistant",
+                                "content": f"**Step {next_step_num +1}:** {next_step.instruction}\n\n{next_step.question}",
+                                "timestamp": time.strftime("%H:%M"),
+                                "requires_input": True,
+                                "step_num": next_step_num
+                            })
+                            st.session_state.problem_state['awaiting_answer'] = True
+                    else:
+                        # Less than 3 attempts, allow retry
+                        st.session_state.chat_history.append({
+                            "role": "assistant",
+                            "content": f"❌ That's not quite right. Try again! You have {remaining_attempts} attempts left.",
+                            "timestamp": time.strftime("%H:%M"),
+                            "requires_input": True,
+                            "step_num": current_step_index
+                        })
+                        st.session_state.user_input = ''
+                        st.session_state.input_buffer = ''
+                        st.session_state.reset_input_box = True
+
+                    # Save incorrect answer interaction
+                    data = {
+                        "original_problem": st.session_state.problem_state['original_problem'],
+                        "current_step": current_step_index + 1,
+                        "user_input": user_input,
+                        "correct_answer": expected_answer,
+                        "hint": current_step.explanation if current_step.hint_count > 0 else None,
+                        "final_answer": st.session_state.problem_state['final_answer'],
+                        "problem_summary": None,
+                        "user_feedback": f"Incorrect answer (Attempt {current_step.attempt_count})"
+                    }
+                    append_data_to_sheet(json.dumps(data))
+
+                    if current_step.attempt_count >= 3:
+                        # Save failed step data
+                        data = {
+                            "original_problem": st.session_state.problem_state['original_problem'],
+                            "current_step": current_step_index + 1,
+                            "user_input": user_input,
+                            "correct_answer": expected_answer,
+                            "hint": current_step.explanation,
+                            "final_answer": st.session_state.problem_state['final_answer'],
+                            "problem_summary": None,
+                            "user_feedback": "Max attempts reached, showing solution"
+                        }
+                        append_data_to_sheet(json.dumps(data))
 
         # Reset states on submit
         st.rerun()
