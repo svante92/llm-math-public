@@ -3,6 +3,8 @@ import time
 import os
 from dotenv import load_dotenv
 from llm import MathSolver, MathSolution, Step  # Import MathSolution and Step
+import json
+from sheets import append_data_to_sheet
 
 # Load environment variables from .env file
 load_dotenv()
@@ -37,6 +39,9 @@ if 'solver' not in st.session_state:
 # Initialize session state
 if 'input_buffer' not in st.session_state:
     st.session_state.input_buffer = ""
+
+if 'show_feedback_form' not in st.session_state:
+    st.session_state.show_feedback_form = False
 
 def create_calculator_sidebar():
     """Create the calculator sidebar with all buttons"""
@@ -265,6 +270,19 @@ def main():
                     st.session_state.input_buffer = ''
                     st.session_state.problem_state['awaiting_answer'] = True
 
+                    # Save initial problem data
+                    data = {
+                        "original_problem": user_input,
+                        "current_step": 0,
+                        "user_input": user_input,
+                        "correct_answer": None,
+                        "hint": None,
+                        "final_answer": solution.final_answer,
+                        "problem_summary": None,
+                        "user_feedback": "Started new problem"
+                    }
+                    append_data_to_sheet(json.dumps(data))
+
                 except Exception as e:
                     st.error(f"Error processing problem: {str(e)}")
         else:
@@ -331,17 +349,22 @@ def main():
                         "requires_input": False
                     })
 
-                    # Reset problem state for a new problem
-                    st.session_state.problem_state = {
-                        'original_problem': None,
-                        'steps': None,
-                        'current_step': 0,
-                        'expected_answer': None,
-                        'variables': set(),
-                        'awaiting_answer': False,
-                        'final_answer': None,
-                        'solution': None
+                    # Set flag to show feedback form
+                    st.session_state.show_feedback_form = True
+
+                    # Save final summary data
+                    data = {
+                        "original_problem": st.session_state.problem_state['original_problem'],
+                        "current_step": "complete",
+                        "user_input": user_input,
+                        "correct_answer": expected_answer,
+                        "hint": None,
+                        "final_answer": st.session_state.problem_state['final_answer'],
+                        "problem_summary": summary,
+                        "user_feedback": "Problem completed"
                     }
+                    append_data_to_sheet(json.dumps(data))
+
                 else:
                     # Present next step
                     next_step_num = st.session_state.problem_state['current_step']
@@ -354,6 +377,20 @@ def main():
                         "step_num": next_step_num
                     })
                     st.session_state.problem_state['awaiting_answer'] = True
+
+                # Save correct answer interaction
+                data = {
+                    "original_problem": st.session_state.problem_state['original_problem'],
+                    "current_step": current_step_index + 1,
+                    "user_input": user_input,
+                    "correct_answer": expected_answer,
+                    "hint": current_step.explanation if current_step.hint_count > 0 else None,
+                    "final_answer": st.session_state.problem_state['final_answer'],
+                    "problem_summary": None,
+                    "user_feedback": "Correct answer"
+                }
+                append_data_to_sheet(json.dumps(data))
+
             else:
                 # Incorrect answer
                 remaining_attempts = 3 - current_step.attempt_count
@@ -394,17 +431,22 @@ def main():
                             "requires_input": False
                         })
 
-                        # Reset problem state for a new problem
-                        st.session_state.problem_state = {
-                            'original_problem': None,
-                            'steps': None,
-                            'current_step': 0,
-                            'expected_answer': None,
-                            'variables': set(),
-                            'awaiting_answer': False,
-                            'final_answer': None,
-                            'solution': None
+                        # Set flag to show feedback form
+                        st.session_state.show_feedback_form = True
+
+                        # Save final summary data
+                        data = {
+                            "original_problem": st.session_state.problem_state['original_problem'],
+                            "current_step": "complete",
+                            "user_input": user_input,
+                            "correct_answer": expected_answer,
+                            "hint": None,
+                            "final_answer": st.session_state.problem_state['final_answer'],
+                            "problem_summary": summary,
+                            "user_feedback": "Problem completed"
                         }
+                        append_data_to_sheet(json.dumps(data))
+
                     else:
                         # Present next step
                         next_step_num = st.session_state.problem_state['current_step']
@@ -428,6 +470,33 @@ def main():
                     })
                     st.session_state.user_input = ''
                     st.session_state.input_buffer = ''
+
+                # Save incorrect answer interaction
+                data = {
+                    "original_problem": st.session_state.problem_state['original_problem'],
+                    "current_step": current_step_index + 1,
+                    "user_input": user_input,
+                    "correct_answer": expected_answer,
+                    "hint": current_step.explanation if current_step.hint_count > 0 else None,
+                    "final_answer": st.session_state.problem_state['final_answer'],
+                    "problem_summary": None,
+                    "user_feedback": f"Incorrect answer (Attempt {current_step.attempt_count})"
+                }
+                append_data_to_sheet(json.dumps(data))
+
+                if current_step.attempt_count >= 3:
+                    # Save failed step data
+                    data = {
+                        "original_problem": st.session_state.problem_state['original_problem'],
+                        "current_step": current_step_index + 1,
+                        "user_input": user_input,
+                        "correct_answer": expected_answer,
+                        "hint": current_step.explanation,
+                        "final_answer": st.session_state.problem_state['final_answer'],
+                        "problem_summary": None,
+                        "user_feedback": "Max attempts reached, showing solution"
+                    }
+                    append_data_to_sheet(json.dumps(data))
 
         # Reset states on submit
         st.rerun()
@@ -597,6 +666,45 @@ def main():
                     'final_answer': None,
                     'solution': None
                 }
+
+    # Display feedback form after problem completion
+    if st.session_state.show_feedback_form:
+        st.markdown("---")
+        st.markdown("### We'd love your feedback!")
+        with st.form(key='feedback_form'):
+            name = st.text_input("Name")
+            email = st.text_input("Email")
+            feedback = st.text_area("Share your experience and thoughts using RazeMath!")
+            submit_feedback = st.form_submit_button("Submit Feedback")
+
+            if submit_feedback and name and email and feedback:
+                # Save feedback to sheet
+                feedback_data = {
+                    "original_problem": st.session_state.problem_state['original_problem'],
+                    "current_step": "feedback",
+                    "user_input": None,
+                    "correct_answer": None,
+                    "hint": None,
+                    "final_answer": st.session_state.problem_state['final_answer'],
+                    "problem_summary": None,
+                    "user_feedback": f"Name: {name}, Email: {email}, Feedback: {feedback}"
+                }
+                append_data_to_sheet(json.dumps(feedback_data))
+
+                # Reset states
+                st.session_state.show_feedback_form = False
+                st.session_state.problem_state = {
+                    'original_problem': None,
+                    'steps': None,
+                    'current_step': 0,
+                    'expected_answer': None,
+                    'variables': set(),
+                    'awaiting_answer': False,
+                    'final_answer': None,
+                    'solution': None
+                }
+                st.success("Thank you for your feedback!")
+                st.rerun()
 
 if __name__ == "__main__":
     main()

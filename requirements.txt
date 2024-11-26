@@ -2,3 +2,9 @@ openai==1.28.2
 pydantic==1.10.12
 python-dotenv==0.21.0
 streamlit==1.30.0
+google-api-core==2.23.0
+google-api-python-client==2.154.0
+google-auth==2.36.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.1
+googleapis-common-protos==1.66.0
