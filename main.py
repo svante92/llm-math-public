@@ -87,6 +87,9 @@ def create_calculator_sidebar():
     """Create the calculator sidebar with all buttons"""
     st.sidebar.header("Advanced Calculator")
 
+    # Add a spacer for better layout
+    st.sidebar.markdown("---")
+
     # Advanced operations
     st.sidebar.subheader("Advanced Operations")
     cols = st.sidebar.columns(4)
@@ -114,6 +117,9 @@ def create_calculator_sidebar():
                 # Update the input box content
                 st.session_state.input_box = st.session_state.input_buffer
 
+    # Add a spacer for better layout
+    st.sidebar.markdown("---")
+
     # Functions
     st.sidebar.subheader("Functions")
     cols = st.sidebar.columns(3)
@@ -125,6 +131,9 @@ def create_calculator_sidebar():
                 st.session_state.input_buffer += f"{func}("
                 # Update the input box content
                 st.session_state.input_box = st.session_state.input_buffer
+
+    # Add a spacer for better layout
+    st.sidebar.markdown("---")
 
     # Clear button
     if st.sidebar.button("Clear", key="clear_expr", use_container_width=True):
@@ -278,7 +287,6 @@ def main():
         # Input box with on_change callback
         user_input = st.text_input(
             "Your Input:",
-            value=st.session_state.input_buffer,
             key='input_box',
             on_change=update_input_buffer
         )
