@@ -55,6 +55,34 @@ if 'show_feedback_form' not in st.session_state:
 def update_input_buffer():
     st.session_state.input_buffer = st.session_state.input_box
 
+def reset_problem():
+    # Reset all session state variables related to the problem
+    st.session_state.chat_history = []
+    st.session_state.problem_state = {
+        'original_problem': None,
+        'steps': None,
+        'current_step': 0,
+        'expected_answer': None,
+        'variables': set(),
+        'awaiting_answer': False,
+        'final_answer': None,
+        'solution': None
+    }
+    st.session_state.input_buffer = ''
+    st.session_state.input_box = ''
+    st.session_state.user_input_submitted = False
+    st.session_state.reset_input_box = False
+    st.session_state.show_feedback_form = False
+    st.session_state.user_input = ''
+    # Reset any other session state variables as needed
+
+    # Display a success message (optional)
+    st.success("Problem has been reset.")
+
+    # Rerun the app to reflect changes
+    st.experimental_rerun()
+
+
 def create_calculator_sidebar():
     """Create the calculator sidebar with all buttons"""
     st.sidebar.header("Advanced Calculator")
@@ -102,6 +130,14 @@ def create_calculator_sidebar():
     if st.sidebar.button("Clear", key="clear_expr", use_container_width=True):
         st.session_state.input_buffer = ""
         st.session_state.input_box = ""
+
+    # Add a spacer for better layout
+    st.sidebar.markdown("---")
+
+    # Reset Problem button
+    if st.sidebar.button("Reset Problem", key="reset_button", use_container_width=True):
+        reset_problem()
+
 
     # Add a spacer for better layout
     st.sidebar.markdown("---")
