@@ -282,20 +282,20 @@ def main():
     # Main chat container
     chat_container = st.container()
 
-    # Input area at the bottom without a form
     with st.container():
-        # Input box with on_change callback
-        user_input = st.text_input(
-            "Your Input:",
-            key='input_box',
-            on_change=update_input_buffer
-        )
-        # Submit button
-        submit_button = st.button('Submit', key='submit_button')
+        # Start a form so that pressing Enter in the text input submits the form
+        with st.form(key='problem_form'):
+            user_input = st.text_input(
+                "Your Input:",
+                key='input_box'
+            )
+            submit_button = st.form_submit_button("Submit")
 
-    # If submit button is clicked, set user_input_submitted to True
-    if submit_button:
-        st.session_state.user_input_submitted = True
+        # If submit_button is True, it means the form was submitted either
+        # by clicking the button or pressing Enter while typing
+        if submit_button:
+            st.session_state.user_input_submitted = True
+            st.session_state.user_input = st.session_state.input_box
 
     # Process the input when user_input_submitted is True
     if st.session_state.user_input_submitted:
