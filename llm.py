@@ -284,7 +284,7 @@ The problem to solve is: {problem}
             
             Provide a helpful hint that:
             1. Addresses their specific question
-            2. Guides them toward understanding the concept
+            2. Guides them toward understanding the concept but without directly giving the answer
             3. If they had previous attempts, explain why they were incorrect
             4. Use proper LaTeX formatting for ALL mathematical expressions ($...$)
             5. Focus on the process and understanding, not the final answer
