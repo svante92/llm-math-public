@@ -90,6 +90,13 @@ def create_calculator_sidebar():
     # Add a spacer for better layout
     st.sidebar.markdown("---")
 
+    # Reset Problem button
+    if st.sidebar.button("Reset Problem", key="reset_button", use_container_width=True):
+        reset_problem()
+
+    # Add a spacer for better layout
+    st.sidebar.markdown("---")
+
     # Advanced operations
     st.sidebar.subheader("Advanced Operations")
     cols = st.sidebar.columns(4)
@@ -139,14 +146,6 @@ def create_calculator_sidebar():
     if st.sidebar.button("Clear", key="clear_expr", use_container_width=True):
         st.session_state.input_buffer = ""
         st.session_state.input_box = ""
-
-    # Add a spacer for better layout
-    st.sidebar.markdown("---")
-
-    # Reset Problem button
-    if st.sidebar.button("Reset Problem", key="reset_button", use_container_width=True):
-        reset_problem()
-
 
     # Add a spacer for better layout
     st.sidebar.markdown("---")
