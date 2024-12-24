@@ -137,12 +137,11 @@ The problem to solve is: {problem}
                 solution = json.loads(arguments)
                 
                 # Clean and format the final answer for LaTeX
-                final_answer = solution["final_answer"]
-                final_answer = final_answer.strip('$')
+                final_answer = solution["final_answer"].strip('$')
                 if '\\' not in final_answer and '^' in final_answer:
                     final_answer = final_answer.replace('^', '^{') + '}'
                 solution["final_answer"] = final_answer
-                
+
                 # Process each step to generate graphs if needed
                 for step in solution["steps"]:
                     graph_query = step.get("graph_query")
@@ -348,11 +347,18 @@ Here is their performance on each step:
 {steps_info}
 
 Provide a summary that:
-- Commends the student on the steps they did correctly.
-- Gently points out the steps they struggled with.
-- Offers advice on areas to review or study further.
-- Uses encouraging and supportive language.
-- Does not reveal any additional answers or solutions.
+Starts with a brief pleasantry. (e.g. “Great job!”)
+States the specific concepts, formulas, or topics that the student correctly used in their solution.
+Points out the specific step(s) that the student made a mistake on, and what the mistake was.
+Gives the student specific topics to study further based on the mistakes made in the previous problem.
+Ends with another brief pleasantry that motivates the student to keep studying and learning about the areas they need to improve on.
+
+Make sure the problem summary:
+-Gives the student relevant recommendations about what to study next based on their mistakes in the previous problem, with the objective that these topics will help them score better on their exams.
+-Is written concisely. It should follow the given structure while also not being too verbose.
+-Is written in a gentle and patient tone. Be empathetic, but don’t be overly pleasant or motivational. Simple pleasantries at the start and end are enough.
+-Does not reveal any additional answers or solutions.
+-Recommends that the student keep studying the same topic or similar if they made no mistakes.
 """
 
             response = self.client.chat.completions.create(

@@ -678,21 +678,23 @@ def main():
                                 st.session_state[step_key] = not st.session_state[step_key]
 
                             if st.session_state[step_key]:
-                                # Get previous attempts for this step
-                                previous_attempts = [
-                                    msg["content"]
-                                    for msg in st.session_state.chat_history
-                                    if msg["role"] == "user" and
-                                    msg.get("step_num") == step_num
-                                ]
+                                # Create a form so pressing Enter submits
+                                with st.form(key=f"ask_custom_form_{idx}"):
+                                    user_question = st.text_input(
+                                        "",  # Label hidden
+                                        key=f"hint_input_{idx}",
+                                        placeholder="Need clarification? Ask Raze..."
+                                    )
+                                    ask_submitted = st.form_submit_button("Ask")
 
-                                user_question = st.text_input(
-                                    "",  # Label hidden
-                                    key=f"hint_input_{idx}",
-                                    placeholder="Need clarification? Ask Raze..."
-                                )
+                                if ask_submitted:
+                                    # Define previous_attempts for this step:
+                                    previous_attempts = [
+                                        msg["content"]
+                                        for msg in st.session_state.chat_history
+                                        if msg["role"] == "user" and msg.get("step_num") == step_num
+                                    ]
 
-                                if st.button("Ask", key=f"ask_{idx}"):
                                     remaining_hints = max(0, 3 - current_step.hint_count)
                                     if remaining_hints > 0:
                                         hint = st.session_state.solver.generate_custom_hint(
@@ -702,7 +704,7 @@ def main():
                                         )
                                         current_step.hint_count += 1
 
-                                        # Display hint with proper LaTeX formatting
+                                        # Display the hint with LaTeX formatting
                                         hint_parts = hint.split("$")
                                         for i, part in enumerate(hint_parts):
                                             if i % 2 == 0:  # Regular text
