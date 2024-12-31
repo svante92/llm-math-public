@@ -130,14 +130,17 @@ def create_calculator_sidebar():
     # Functions
     st.sidebar.subheader("Functions")
     cols = st.sidebar.columns(3)
-    functions = ["sin", "cos", "tan", "log", "exp"]
+    functions = ["sin", "cos", "tan", "log", "e^x"]
     for i, func in enumerate(functions):
         with cols[i % 3]:
             st.latex(func)
             if st.button(func, key=f"func_{func}", use_container_width=True):
-                st.session_state.input_buffer += f"{func}("
-                # Update the input box content
-                st.session_state.input_box = st.session_state.input_buffer
+                if func == "e^x":
+                    st.session_state.input_buffer += "e^("
+                else:
+                    # Otherwise behave as before
+                    st.session_state.input_buffer += f"{func}("
+                    st.session_state.input_box = st.session_state.input_buffer
 
     # Add a spacer for better layout
     st.sidebar.markdown("---")
