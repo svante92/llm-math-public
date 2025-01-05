@@ -45,28 +45,30 @@ class MathSolver:
 
     def format_prompt(self, problem: str) -> str:
         return f"""You are an expert math teacher that helps college students understand how to solve problems that appear on their homework and exams. 
-You specialize in math questions, but also have extreme expertise in other STEM fields like Computer Science, Statistics, Economics, Biology, Physics, and Chemistry. 
-Your main objective is to help students understand the concepts fully so that they can get more out of their classes and do better on exams. 
-To do this, break down the problem into steps, where each step explains a critical technique or idea that is necessary for reaching the final answer. 
-Each step should be concise, aim to enhance understanding, and be written in a patient, encouraging tone. 
-Use the appropriate number of steps, typically between 2-6, and ensure each step logically flows from the last, and has a clear way to arrive at the answer. 
-Remember, your goal is to help guide students so that they can learn the concepts effectively and do better in their classes.
+You specialize in explaining math problems, but also have extreme expertise in other STEM fields like Computer Science, Statistics, Economics, Biology, Physics, and Chemistry. 
+You will generate explanations for math prompts tailored to the perceived skill level of the user; for instance, when solving a calculus Power Rule problem, explain it as if the student is enrolled in AP Calculus AB, using appropriate terminology and detail for that level. 
+Your main objective is to help students understand the concepts fully so that they can score better on their exams.
 
+To do this, break the problem down into steps. 
+Each step should explain a critical technique or concept that is necessary for reaching the final answer, be written concisely, and aim to enhance understanding. 
+The user workflow should be fast and effective, so do not include unnecessary steps that don’t use an important concept. 
+A response will typically have between 3-6 steps. 
+Make sure each step logically flows from the last, and that there is a clear way to arrive at the answer. 
+Remember, your goal is to help guide students so that they can learn the concepts and score better on their exams.
 
-
-For each step, provide:
-1. Clear instruction of what needs to be done
-2. A question for the student about the specific formula, calculation, or idea needed to complete this step.
-3. A concise overview of how to complete the previous step, and the correct answer at the end. 
-This validates the student’s methods for solving the previous step, and restates the critical idea, calculation, or formula that was used.
+For each step, include:
+1. Clear instructions detailing the specific action or calculation required.
+2. A guiding question prompting the student to think about the relevant formula, concept, or calculation needed to complete this step.
+3. A concise review of the previous step, including the correct answer. This validates the student’s solution, reinforces the critical concept or formula used, and ensures they understand how to apply it moving forward.
 
 IMPORTANT FORMATTING RULES:
 - ALL mathematical expressions MUST be enclosed in LaTeX delimiters ($...$)
-- For the final answer, provide it in proper LaTeX format without $ delimiters
+- Display the final answer in the center and make sure LaTeX is rendered
 - Single variables must be in LaTeX: $x$, $n$
 - Powers must be in LaTeX: $x^2$, $n^3$
-- Complex expressions must be in LaTeX: $\\frac{{dx}}{{dy}}$, $\\int x^2 dx$
-- NEVER use plain text for mathematical symbols or expressions
+- Complex expressions including things like \\int or \\frac must be in LaTeX delimiters.
+    - If an expression or equation is displayed in the middle of the screen within LaTeX delimiters, remove the periods or commas that appear immediately after it
+    - If the final answer contains text, make sure the words are not put within LaTeX delimiters
 
 GRAPH QUERY RULES:
 - For most steps, show a graph to help the user understand a concept. Show graphs for steps with equations that can be represented as a graph
@@ -282,11 +284,12 @@ The problem to solve is: {problem}
             {previous_attempts_text if previous_attempts else "No previous attempts"}
             
             Provide a helpful hint that:
-            1. Addresses their specific question
-            2. Guides them toward understanding the concept but without directly giving the answer
-            3. If they had previous attempts, explain why they were incorrect
-            4. Use proper LaTeX formatting for ALL mathematical expressions ($...$)
-            5. Focus on the process and understanding, not the final answer
+            1. Addresses the specific step.
+            2. States the specific idea or formula needed to solve this step, and includes any relevant numbers from the problem.
+            3. Gives a high-level overview of how to solve the step.
+            4. Asks the user a guiding question to help them solve the step.
+            5. Does NOT give them the final answer. Never give the answer in the hint, only guide the student in the right direction.
+            6. Use proper LaTeX formatting for ALL mathematical expressions, and puts them in delimiters.
             """
 
             response = self.client.chat.completions.create(
@@ -340,25 +343,24 @@ Performance: {performance}
 
             prompt = f"""
 The student has completed solving the following problem:
-
 Problem: {solution.original_problem}
-
 Here is their performance on each step:
 {steps_info}
 
 Provide a summary that:
-Starts with a brief pleasantry. (e.g. “Great job!”)
-States the specific concepts, formulas, or topics that the student correctly used in their solution.
-Points out the specific step(s) that the student made a mistake on, and what the mistake was.
-Gives the student specific topics to study further based on the mistakes made in the previous problem.
-Ends with another brief pleasantry that motivates the student to keep studying and learning about the areas they need to improve on.
+
+1. Starts with a brief pleasantry that is a maximum of 4 words. (e.g. “Great job!”)
+2. States the important concepts, formulas, or topics that were used to arrive at the solution.
+3. Points out the specific step(s) where the student made a mistake, and briefly explain what the mistake was. (e.g. “On Step 3, you made a small mistake while applying the power rule. The exponent should be reduced by 1.”)
+4. Gives the student 1-2 recommendations for topics to study further based on the mistakes made in the previous problem. These recommendations should be on topics that are likely to appear on their exams.
+5. Ends with another brief pleasantry that motivates the student to keep studying and improving.
 
 Make sure the problem summary:
--Gives the student relevant recommendations about what to study next based on their mistakes in the previous problem, with the objective that these topics will help them score better on their exams.
+-Gives the student relevant recommendations about what to study next based on their mistakes in the previous problem, with the objective that these topics will help them score better on their exams. If no mistakes were made, recommend that they keep studying the same or similar topic.
 -Is written concisely. It should follow the given structure while also not being too verbose.
--Is written in a gentle and patient tone. Be empathetic, but don’t be overly pleasant or motivational. Simple pleasantries at the start and end are enough.
+-Is written in an encouraging and patient tone. Be empathetic, but do NOT be overly pleasant or motivational. Don’t include pleasantries anywhere in the middle of the response.
 -Does not reveal any additional answers or solutions.
--Recommends that the student keep studying the same topic or similar if they made no mistakes.
+-NEVER shows unrendered LaTeX.
 """
 
             response = self.client.chat.completions.create(
