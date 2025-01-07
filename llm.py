@@ -63,12 +63,22 @@ For each step, include:
 
 IMPORTANT FORMATTING RULES:
 - ALL mathematical expressions MUST be enclosed in LaTeX delimiters ($...$)
-- Display the final answer in the center and make sure LaTeX is rendered
-- Single variables must be in LaTeX: $x$, $n$
-- Powers must be in LaTeX: $x^2$, $n^3$
-- Complex expressions including things like \\int or \\frac must be in LaTeX delimiters.
-    - If an expression or equation is displayed in the middle of the screen within LaTeX delimiters, remove the periods or commas that appear immediately after it
-    - If the final answer contains text, make sure the words are not put within LaTeX delimiters
+- For complex mathematical structures (matrices, aligned equations, etc.):
+    - Use \\begin{{...}} and \\end{{...}} environments inside LaTeX delimiters
+    - Example for matrices: $\\begin{{bmatrix}} a & b \\\\ c & d \\end{{bmatrix}}$
+    - Example for aligned equations: $\\begin{{align}} x &= 2 \\\\ y &= 3 \\end{{align}}$
+- For inline expressions:
+    - Single variables: $x$, $n$
+    - Powers: $x^2$, $n^3$
+    - Fractions: $\\frac{{dx}}{{dy}}$
+    - Integrals: $\\int x^2 dx$
+- NEVER mix plain text and mathematical symbols
+- NEVER leave LaTeX commands undelimited
+- For the final answer:
+    - Present it as a standalone LaTeX expression
+    - Remove any trailing punctuation
+    - If text is needed, keep it outside the LaTeX delimiters
+    - Example: The solution is $x = 5$ units
 
 GRAPH QUERY RULES:
 - For most steps, show a graph to help the user understand a concept. Show graphs for steps with equations that can be represented as a graph
@@ -129,7 +139,7 @@ The problem to solve is: {problem}
                 ],
                 functions=functions,
                 function_call={"name": "get_math_solution"},
-                temperature=0.2,
+                temperature=0.4,
             )
 
             message = response.choices[0].message
@@ -226,7 +236,7 @@ The problem to solve is: {problem}
                 messages=[
                     {
                         "role": "system", 
-                        "content": "You are a helpful assistant that checks if the student's answer is correct."
+                        "content": "You are a helpful assistant that checks if the student's answer is correct. The answer doesnt have to match the expected answer exactly, but it should be relatively equivalent."
                     },
                     {
                         "role": "user", 
@@ -286,14 +296,15 @@ The problem to solve is: {problem}
             Provide a helpful hint that:
             1. Addresses the specific step.
             2. States the specific idea or formula needed to solve this step, and includes any relevant numbers from the problem.
-            3. Gives a high-level overview of how to solve the step.
-            4. Asks the user a guiding question to help them solve the step.
-            5. Does NOT give them the final answer. Never give the answer in the hint, only guide the student in the right direction.
-            6. Use proper LaTeX formatting for ALL mathematical expressions, and puts them in delimiters.
+            3. If they had previous attempts, explain why they were incorrect
+            4. Gives a high-level overview of how to solve the step.
+            5. Asks the user a guiding question to help them solve the step.
+            6. Does NOT give them the final answer. Never give the answer in the hint, only guide the student in the right direction.
+            7. Use proper LaTeX formatting for ALL mathematical expressions ($...$)
             """
 
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "system", 
@@ -361,6 +372,7 @@ Make sure the problem summary:
 -Is written in an encouraging and patient tone. Be empathetic, but do NOT be overly pleasant or motivational. Don’t include pleasantries anywhere in the middle of the response.
 -Does not reveal any additional answers or solutions.
 -NEVER shows unrendered LaTeX.
+-Use proper LaTeX formatting for ALL mathematical expressions ($...$)
 """
 
             response = self.client.chat.completions.create(

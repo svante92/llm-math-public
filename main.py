@@ -80,7 +80,7 @@ def reset_problem():
     st.success("Problem has been reset.")
 
     # Rerun the app to reflect changes
-    st.experimental_rerun()
+    st.rerun()
 
 
 def create_calculator_sidebar():
@@ -397,6 +397,7 @@ def main():
                 if is_correct:
                     # Correct answer
                     current_step.user_correct = True  # Update user_correct attribute
+                    print(current_step.explanation)
                     st.session_state.chat_history.append({
                         "role": "assistant",
                         "content": f"✅ Correct! {current_step.explanation}",
