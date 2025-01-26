@@ -12,7 +12,8 @@ from graph import generate_graph_from_query  # Import the graph generation funct
 
 # Load environment variables from .env file
 load_dotenv()
-API_KEY = os.getenv("OPENAI_API_KEY")  # Get the API key from the environment
+API_KEY = os.getenv("OPENAI_API_KEY")  # Get the API key from the environment]
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 # Set this up at the start of your program
 logging.basicConfig(
     filename='app.log',
@@ -42,6 +43,7 @@ class MathSolver:
     def __init__(self, api_key: str):
         """Initialize the OpenAI client"""
         self.client = openai.OpenAI(api_key=api_key)
+        self.deepseek_client = openai.OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
     def format_prompt(self, problem: str) -> str:
         return f"""You are an expert math teacher that helps college students understand how to solve problems that appear on their homework and exams. 
@@ -95,15 +97,51 @@ Final answer format example:
 The problem to solve is: {problem}
 """
 
+    def solve_problem(self, problem: str) -> str:
+        """
+        Solve the problem and return the full solution as a string.
+        """
+        prompt = f"""
+        Solve the following math problem and provide a detailed solution of each step in the solution:
+        
+        Problem: {problem}
+        
+        """
+        
+        try:
+            response = self.deepseek_client.chat.completions.create(
+                model="deepseek-reasoner",
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant"},
+                    {
+                        "role": "user",
+                        "content": prompt.strip(),
+                    },
+                ],
+                stream=False
+            )
+            print(response.choices[0].message.content)
+            return response.choices[0].message.content
+
+        except Exception as e:
+            return f"Error solving problem: {str(e)}"
+
     def get_math_solution(self, problem: str) -> MathSolution:
         """
         Send problem to the assistant and get structured solution steps back
         """
         try:
+            problem_solution = self.solve_problem(problem)
+            print("done0")
+            print(problem_solution)
+            print("done1")
+
+            print("Preparing function schema")
+
             functions = [
                 {
                     "name": "get_math_solution",
-                    "description": "Provide the solution steps for the math problem.",
+                    "description": "Provide the solution steps for the math problem solution.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -116,7 +154,7 @@ The problem to solve is: {problem}
                                         "question": {"type": "string"},
                                         "answer": {"type": "string"},
                                         "explanation": {"type": "string"},
-                                        "graph_query": {"type": "string"}  # Add graph query to the schema
+                                        "graph_query": {"type": "string"}
                                     },
                                     "required": ["instruction", "question", "answer", "explanation"],
                                     "additionalProperties": False
@@ -131,33 +169,34 @@ The problem to solve is: {problem}
                 }
             ]
 
+            print("Calling API for solution steps")
             response = self.client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
-                    {"role": "system", "content": "You are a precise math teacher who breaks down problems into clear steps."},
-                    {"role": "user", "content": self.format_prompt(problem)}
+                    {"role": "system", "content": "You are a math teacher who takes a math problem and solution to that problem, and breaks down solution into clear steps."},
+                    {"role": "user", "content": self.format_prompt(problem_solution)}
                 ],
                 functions=functions,
                 function_call={"name": "get_math_solution"},
                 temperature=0.4,
             )
 
+            print("API call completed")
             message = response.choices[0].message
+            print("done")
 
             if message.function_call is not None:
                 arguments = message.function_call.arguments
                 solution = json.loads(arguments)
                 
-                # Clean and format the final answer for LaTeX
                 final_answer = solution["final_answer"].strip('$')
                 if '\\' not in final_answer and '^' in final_answer:
                     final_answer = final_answer.replace('^', '^{') + '}'
                 solution["final_answer"] = final_answer
 
-                # Process each step to generate graphs if needed
                 for step in solution["steps"]:
                     graph_query = step.get("graph_query")
-                    print(f"Graph Query for Step: {graph_query}")  # Debug: Print the graph query
+                    print(f"Graph Query for Step: {graph_query}")
 
                     if graph_query:
                         try:
@@ -376,7 +415,7 @@ Make sure the problem summary:
 """
 
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4o-mini",
                 messages=[
                     {
                         "role": "system",
@@ -407,20 +446,22 @@ if __name__ == "__main__":
         # Initialize the math solver with your API key
         solver = MathSolver(API_KEY)
 
+        #problem_solution = solver.solve_problem(problem)
+
         # Get solution steps
         solution = solver.get_math_solution(problem)
 
-        # Print the structured solution
-        print("\nOriginal Problem:", solution.original_problem)
-        print("\nSolution Steps:")
-        for i, step in enumerate(solution.steps, 1):
-            print(f"\nStep {i}:")
-            print("Instruction:", step.instruction)
-            print("Question:", step.question)
-            print("Expected Answer:", step.answer)
-            print("Explanation:", step.explanation)
+        # # Print the structured solution
+        # #print("\nOriginal Problem:", solution.original_problem)
+        # #print("\nSolution Steps:")
+        # for i, step in enumerate(solution.steps, 1):
+        #     print(f"\nStep {i}:")
+        #     print("Instruction:", step.instruction)
+        #     print("Question:", step.question)
+        #     print("Expected Answer:", step.answer)
+        #     print("Explanation:", step.explanation)
 
-        print("\nFinal Answer:", solution.final_answer)
+        # print("\nFinal Answer:", solution.final_answer)
 
     except Exception as e:
         print(f"Error: {str(e)}")

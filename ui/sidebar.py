@@ -83,23 +83,3 @@ def reset_problem():
     st.success("Problem has been reset.")
     st.rerun()
 
-def main_input_box():
-    """
-    Shows the text input box where user can add or remove characters.
-    The on_change callback updates st.session_state.input_buffer accordingly.
-    """
-    # If "input_box" or "input_buffer" isn't in session state, initialize it.
-    if "input_box" not in st.session_state:
-        st.session_state["input_box"] = ""
-    if "input_buffer" not in st.session_state:
-        st.session_state["input_buffer"] = ""
-
-    def sync_input_buffer():
-        # This makes sure input_buffer matches whatever is in input_box
-        st.session_state.input_buffer = st.session_state.input_box
-
-    st.text_input(
-        label="Your Expression",
-        key="input_box",  # ties the widget value to st.session_state.input_box
-        on_change=sync_input_buffer
-    )
