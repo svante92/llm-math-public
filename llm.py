@@ -106,37 +106,36 @@ The problem to solve is: {problem}
         
         Problem: {problem}
         
+        Do not write your solution in LaTeX. Just write the solution in plain text in quotes Do not just write the answer, break down the solution into steps showing each step in the process.
+
         """
         
         try:
-            response = self.deepseek_client.chat.completions.create(
-                model="deepseek-reasoner",
+            #response = self.deepseek_client.chat.completions.create(
+            response = self.client.chat.completions.create(
+                model="o1-mini",
                 messages=[
-                    {"role": "system", "content": "You are a helpful assistant"},
+                    {"role": "user", "content": "You are a helpful assistant"},
                     {
                         "role": "user",
-                        "content": prompt.strip(),
+                        "content": prompt,
                     },
                 ],
-                stream=False
             )
-            print(response.choices[0].message.content)
             return response.choices[0].message.content
 
         except Exception as e:
             return f"Error solving problem: {str(e)}"
 
     def get_math_solution(self, problem: str) -> MathSolution:
-        """
+        """f
         Send problem to the assistant and get structured solution steps back
         """
         try:
+            print("Solving problem")
             problem_solution = self.solve_problem(problem)
-            print("done0")
+            print("Problem solution:")
             print(problem_solution)
-            print("done1")
-
-            print("Preparing function schema")
 
             functions = [
                 {
@@ -181,9 +180,9 @@ The problem to solve is: {problem}
                 temperature=0.4,
             )
 
-            print("API call completed")
             message = response.choices[0].message
-            print("done")
+            print("Response from GPT-4o:")
+            print(message)
 
             if message.function_call is not None:
                 arguments = message.function_call.arguments
@@ -194,20 +193,20 @@ The problem to solve is: {problem}
                     final_answer = final_answer.replace('^', '^{') + '}'
                 solution["final_answer"] = final_answer
 
-                for step in solution["steps"]:
-                    graph_query = step.get("graph_query")
-                    print(f"Graph Query for Step: {graph_query}")
+                # for step in solution["steps"]:
+                #     graph_query = step.get("graph_query")
+                #     print(f"Graph Query for Step: {graph_query}")
 
-                    if graph_query:
-                        try:
-                            # Generate the graph image
-                            graph_image = generate_graph_from_query(graph_query)
-                            step["graph_image"] = graph_image.getvalue()  # Store the image data
-                            print(f"Graph Image Generated for Step: {step['graph_image'] is not None}")  # Debug: Check if image is generated
-                        except Exception as e:
-                            logging.error(f"Error generating graph for step: {str(e)}")
-                            step["graph_image"] = None  # Set graph_image to None if generation fails
-                            print(f"Error generating graph for step: {str(e)}")  # Debug: Print error message
+                #     if graph_query:
+                #         try:
+                #             # Generate the graph image
+                #             graph_image = generate_graph_from_query(graph_query)
+                #             step["graph_image"] = graph_image.getvalue()  # Store the image data
+                #             print(f"Graph Image Generated for Step: {step['graph_image'] is not None}")  # Debug: Check if image is generated
+                #         except Exception as e:
+                #             logging.error(f"Error generating graph for step: {str(e)}")
+                #             step["graph_image"] = None  # Set graph_image to None if generation fails
+                #             print(f"Error generating graph for step: {str(e)}")  # Debug: Print error message
 
                 math_solution = MathSolution(**solution)
                 if len(math_solution.steps) > 10:
