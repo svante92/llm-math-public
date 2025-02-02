@@ -53,7 +53,7 @@ Your main objective is to help students understand the concepts fully so that th
 
 To do this, break the problem down into steps. 
 Each step should explain a critical technique or concept that is necessary for reaching the final answer, be written concisely, and aim to enhance understanding. 
-The user workflow should be fast and effective, so do not include unnecessary steps that don’t use an important concept. 
+The user workflow should be fast and effective, so do not include unnecessary steps that don't use an important concept. 
 A response will typically have between 3-6 steps. 
 Make sure each step logically flows from the last, and that there is a clear way to arrive at the answer. 
 Remember, your goal is to help guide students so that they can learn the concepts and score better on their exams.
@@ -61,7 +61,7 @@ Remember, your goal is to help guide students so that they can learn the concept
 For each step, include:
 1. Clear instructions detailing the specific action or calculation required.
 2. A guiding question prompting the student to think about the relevant formula, concept, or calculation needed to complete this step.
-3. A concise review of the previous step, including the correct answer. This validates the student’s solution, reinforces the critical concept or formula used, and ensures they understand how to apply it moving forward.
+3. A concise review of the previous step, including the correct answer. This validates the student's solution, reinforces the critical concept or formula used, and ensures they understand how to apply it moving forward.
 
 IMPORTANT FORMATTING RULES:
 - ALL mathematical expressions MUST be enclosed in LaTeX delimiters ($...$)
@@ -235,16 +235,27 @@ The problem to solve is: {problem}
 
         return user_clean == correct_clean
     
-    def validate_step_answer_llm(self, user_answer: str, correct_answer: str) -> bool:
+    def dump_to_file(self, variable, filename: str = "debug_dump.txt"):
         """
-        Use the LLM to compare the user's answer and the expected answer.
+        Dumps a variable's content to a text file for debugging purposes.
         
         Args:
-            user_answer (str): The answer provided by the user.
-            correct_answer (str): The expected correct answer.
-        
-        Returns:
-            bool: True if the answers are equivalent, False otherwise.
+            variable: Any variable to dump to file
+            filename (str): Name of the file to write to (defaults to debug_dump.txt)
+        """
+        try:
+            with open(filename, 'w') as f:
+                if isinstance(variable, (dict, list)):
+                    json.dump(variable, f, indent=2)
+                else:
+                    f.write(str(variable))
+            logging.debug(f"Successfully dumped variable to {filename}")
+        except Exception as e:
+            logging.error(f"Error dumping variable to file: {str(e)}")
+    
+    def validate_step_answer_llm(self, user_answer: str, correct_answer: str, step_question: str) -> bool:
+        """
+        Use the LLM to compare the user's answer and the expected answer.
         """
         try:
             functions = [
@@ -260,7 +271,7 @@ The problem to solve is: {problem}
                             },
                             "explanation": {
                                 "type": "string",
-                                "description": "Brief explanation of why the answer is correct or incorrect"
+                                "description": "Explain to the student why the answer is correct or incorrect. Do not include any math terms in the answer just plain english Make sure its brief. Also do not reveal the correct answer, only explain why the answer is correct or incorrect. Make sure to address the student directly like youre speaking to them"
                             }
                         },
                         "required": ["is_correct", "explanation"],
@@ -269,6 +280,7 @@ The problem to solve is: {problem}
                 }
             ]
 
+            # Add logging to see the actual API response
             response = self.client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
@@ -278,21 +290,31 @@ The problem to solve is: {problem}
                     },
                     {
                         "role": "user", 
-                        "content": f"Determine if these answers are equivalent:\nStudent's Answer: {user_answer}\nExpected Answer: {correct_answer}"
+                        "content": f"Determine if these answers are equivalent based on this question: {step_question}:\nStudent's Answer: {user_answer}\nExpected Answer: {correct_answer}"
                     }
                 ],
                 functions=functions,
                 function_call={"name": "validate_answer"},
                 temperature=0.0
             )
-
+            
+            # Log the full response for debugging
+            logging.debug(f"API Response: {response}")
+            
             if response.choices[0].message.function_call is not None:
                 result = json.loads(response.choices[0].message.function_call.arguments)
-                return result["is_correct"]
+                logging.debug(f"Parsed result: {result}")  # Log the parsed result
+                
+                # Ensure both values are returned
+                if "is_correct" not in result or "explanation" not in result:
+                    raise ValueError("Missing required fields in response")
+                    
+                return result["is_correct"], result["explanation"]
             else:
                 raise Exception("No function call in response")
 
         except Exception as e:
+            logging.error(f"Error validating answer with LLM: {str(e)}")
             raise Exception(f"Error validating answer with LLM: {str(e)}")
 
     def generate_custom_hint(self, step: Step, user_question: str, previous_attempts: List[str] = None) -> str:
@@ -398,16 +420,16 @@ Here is their performance on each step:
 
 Provide a summary that:
 
-1. Starts with a brief pleasantry that is a maximum of 4 words. (e.g. “Great job!”)
+1. Starts with a brief pleasantry that is a maximum of 4 words. (e.g. "Great job!")
 2. States the important concepts, formulas, or topics that were used to arrive at the solution.
-3. Points out the specific step(s) where the student made a mistake, and briefly explain what the mistake was. (e.g. “On Step 3, you made a small mistake while applying the power rule. The exponent should be reduced by 1.”)
+3. Points out the specific step(s) where the student made a mistake, and briefly explain what the mistake was. (e.g. "On Step 3, you made a small mistake while applying the power rule. The exponent should be reduced by 1.")
 4. Gives the student 1-2 recommendations for topics to study further based on the mistakes made in the previous problem. These recommendations should be on topics that are likely to appear on their exams.
 5. Ends with another brief pleasantry that motivates the student to keep studying and improving.
 
 Make sure the problem summary:
 -Gives the student relevant recommendations about what to study next based on their mistakes in the previous problem, with the objective that these topics will help them score better on their exams. If no mistakes were made, recommend that they keep studying the same or similar topic.
 -Is written concisely. It should follow the given structure while also not being too verbose.
--Is written in an encouraging and patient tone. Be empathetic, but do NOT be overly pleasant or motivational. Don’t include pleasantries anywhere in the middle of the response.
+-Is written in an encouraging and patient tone. Be empathetic, but do NOT be overly pleasant or motivational. Don't include pleasantries anywhere in the middle of the response.
 -Does not reveal any additional answers or solutions.
 -NEVER shows unrendered LaTeX.
 -Use proper LaTeX formatting for ALL mathematical expressions ($...$)
