@@ -30,7 +30,7 @@ def handle_user_input():
         if user_input:
             if st.session_state.problem_state['steps'] is None:
                 st.session_state.problem_state['original_problem'] = user_input
-                with st.spinner("Processing the problem..."):
+                with st.spinner("Processing the problem, this may take a minute..."):
                     try:
                         solution = st.session_state.solver.get_math_solution(user_input)
                         st.session_state.problem_state['steps'] = solution.steps
@@ -369,21 +369,25 @@ def display_chat_history(chat_container):
 
                         with col1:
                             if st.button("Show Hint", key=f"hint_{idx}"):
-                                remaining_hints = max(0, 3 - current_step.hint_count)
-                                if remaining_hints > 0:
-                                    hint = current_step.explanation
-                                    current_step.hint_count += 1
+                                # Add check for completed problem
+                                if st.session_state.problem_state['steps'] is None or step_num >= len(st.session_state.problem_state['steps']):
+                                    st.warning("Cannot show hints for a completed problem.")
+                                else:    
+                                    remaining_hints = max(0, 3 - current_step.hint_count)
+                                    if remaining_hints > 0:
+                                        hint = current_step.explanation
+                                        current_step.hint_count += 1
 
-                                    hint_parts = hint.split("$")
-                                    for i, part in enumerate(hint_parts):
-                                        if i % 2 == 0:
-                                            if part.strip():
-                                                st.write(part.strip())
-                                        else:
-                                            if part.strip():
-                                                st.latex(part.strip())
-                                else:
-                                    st.warning("You've reached the maximum number of hints for this step.")
+                                        hint_parts = hint.split("$")
+                                        for i, part in enumerate(hint_parts):
+                                            if i % 2 == 0:
+                                                if part.strip():
+                                                    st.write(part.strip())
+                                            else:
+                                                if part.strip():
+                                                    st.latex(part.strip())
+                                    else:
+                                        st.warning("You've reached the maximum number of hints for this step.")
 
                         with col2:
                             if st.button("Ask Custom Question", key=f"custom_{idx}"):
