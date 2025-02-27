@@ -30,7 +30,7 @@ def handle_user_input():
         if user_input:
             if st.session_state.problem_state['steps'] is None:
                 st.session_state.problem_state['original_problem'] = user_input
-                with st.spinner("Processing the problem, this may take a minute..."):
+                with st.spinner("Processing the problem, this could take a few minutes due to high traffic..."):
                     try:
                         solution = st.session_state.solver.get_math_solution(user_input)
                         st.session_state.problem_state['steps'] = solution.steps
