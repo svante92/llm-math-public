@@ -14,6 +14,7 @@ from graph import generate_graph_from_query  # Import the graph generation funct
 load_dotenv()
 API_KEY = os.getenv("OPENAI_API_KEY")  # Get the API key from the environment]
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 # Set this up at the start of your program
 logging.basicConfig(
     filename='app.log',
@@ -43,7 +44,7 @@ class MathSolver:
     def __init__(self, api_key: str):
         """Initialize the OpenAI client"""
         self.client = openai.OpenAI(api_key=api_key)
-        self.deepseek_client = openai.OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+        self.deepseek_client = openai.OpenAI(api_key=OPENROUTER_API_KEY, base_url="https://openrouter.ai/api/v1")
 
     def format_prompt(self, problem: str) -> str:
         return f"""You are an expert math teacher that helps college students understand how to solve problems that appear on their homework and exams. 
@@ -110,7 +111,7 @@ The problem to solve is: {problem}
         
         try:
             response = self.deepseek_client.chat.completions.create(
-                model="deepseek-reasoner",
+                model="deepseek/deepseek-r1",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant"},
                     {
