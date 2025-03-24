@@ -44,6 +44,7 @@ def create_calculator_sidebar():
             if st.button(func, key=f"func_{func}", use_container_width=True):
                 if func == "e^x":
                     st.session_state.input_buffer += "e^("
+                    st.session_state.input_box = st.session_state.input_buffer
                 else:
                     st.session_state.input_buffer += f"{func}("
                     st.session_state.input_box = st.session_state.input_buffer
