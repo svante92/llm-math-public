@@ -3,6 +3,7 @@ from typing import List, Dict
 from pydantic import BaseModel
 import json
 import logging
+import time
 
 from dotenv import load_dotenv  # Import dotenv
 
@@ -19,7 +20,8 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 logging.basicConfig(
     filename='app.log',
     level=logging.DEBUG,
-    format='%(asctime)s - %(message)s'
+    format='%(asctime)s - %(message)s',
+    force=True
 )
 
 class Step(BaseModel):
@@ -110,6 +112,9 @@ The problem to solve is: {problem}
         """
         
         try:
+
+            start_time = time.time() # Start Time Log
+
             response = self.deepseek_client.chat.completions.create(
                 model="deepseek/deepseek-r1",
                 messages=[
@@ -121,6 +126,10 @@ The problem to solve is: {problem}
                 ],
                 stream=False
             )
+            end_time = time.time() # End Time Log
+            elapsed_time = end_time - start_time
+            logging.info(f"TIME LOG: Deepseek request took {elapsed_time:.2f} seconds.")
+
             print(response.choices[0].message.content)
             return response.choices[0].message.content
 
@@ -132,10 +141,18 @@ The problem to solve is: {problem}
         Send problem to the assistant and get structured solution steps back
         """
         try:
+
+            start_time = time.time() # Start Time Log for Math Solution
+
             problem_solution = self.solve_problem(problem)
             print("done0")
             print(problem_solution)
             print("done1")
+
+            deepseek_time = time.time() - start_time # Deepseek Total Time
+            logging.info(f"TIME LOG: Total time for Deepseek response: {deepseek_time:.2f} seconds.")
+
+            start_time_openai = time.time() # Start Time Log for OpenAI
 
             print("Preparing function schema")
 
@@ -213,9 +230,17 @@ The problem to solve is: {problem}
                 math_solution = MathSolution(**solution)
                 if len(math_solution.steps) > 10:
                     raise ValueError("Too many solution steps")
+                
+                end_time_openai = time.time() # End Time for Open AI 
+                openai_time = end_time_openai - start_time_openai # Total Time for OpenAI
+                logging.info(f"TIME LOG: OpenAI request took {openai_time:.2f} seconds.")
+
+                total_time = end_time_openai - start_time # Total Time for entire process
+                logging.info(f"TIME LOG: Total processing time: {total_time:.2f} seconds.")
                 return math_solution
             else:
                 raise Exception("No function call in response")
+
 
         except Exception as e:
             raise Exception(f"Error getting math solution: {str(e)}")
