@@ -1,0 +1,7 @@
+{
+  "is_correct": true,
+  "explanation": "The student's answer correctly identifies that dividing by 5 is the operation needed to reverse multiplication by 5. This operation will isolate the variable x in an equation where x is multiplied by 5.",
+  "user_answer": "divide by 5",
+  "correct_answer": "To isolate $x$, divide both sides of the equation by 5.",
+  "step_question": "What operation will reverse the multiplication by 5 to isolate $x$?"
+}

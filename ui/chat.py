@@ -28,6 +28,7 @@ def handle_user_input():
         st.session_state.user_input = user_input
 
         if user_input:
+            # Start new problem
             if st.session_state.problem_state['steps'] is None:
                 st.session_state.problem_state['original_problem'] = user_input
                 with st.spinner("Processing the problem, this could take a few minutes due to high traffic..."):
@@ -38,6 +39,7 @@ def handle_user_input():
                         st.session_state.problem_state['current_step'] = 0
                         st.session_state.problem_state['awaiting_answer'] = True
                         st.session_state.problem_state['solution'] = solution
+                        st.session_state.problem_state['new_step'] = True
 
                         st.session_state.chat_history.append({
                             "role": "assistant",
@@ -55,6 +57,7 @@ def handle_user_input():
                             "requires_input": True,
                             "step_num": current_step
                         })
+                        st.session_state.problem_state['new_step'] = False
 
                         st.session_state.user_input = ''
                         st.session_state.input_buffer = ''
@@ -74,7 +77,10 @@ def handle_user_input():
                         append_data_to_sheet(json.dumps(data))
 
                     except Exception as e:
+                        print(e)
                         st.error(f"Error processing problem: {str(e)}")
+
+            # Continue current problem
             else:
                 current_step_index = st.session_state.problem_state['current_step']
                 steps = st.session_state.problem_state['steps']
@@ -112,6 +118,8 @@ def handle_user_input():
                         st.session_state.user_input = ''
                         st.session_state.input_buffer = ''
                         st.session_state.reset_input_box = True
+
+                        # Solved problem
                         if st.session_state.problem_state['current_step'] >= len(steps):
                             st.session_state.chat_history.append({
                                 "role": "assistant",
@@ -170,8 +178,8 @@ def handle_user_input():
                         append_data_to_sheet(json.dumps(data))
 
                     else:
-                        remaining_attempts = 3 - current_step.attempt_count
                         current_step.attempt_count += 1
+                        remaining_attempts = 3 - current_step.attempt_count
 
                         if current_step.attempt_count >= 3:
                             st.session_state.chat_history.append({
@@ -260,7 +268,7 @@ def handle_user_input():
                         else:
                             st.session_state.chat_history.append({
                                 "role": "assistant",
-                                "content": f"❌ That's not quite right. {explanation}\nYou have {remaining_attempts} attempts left.",
+                                "content": f"❌ That's not quite right. {explanation}\nYou have {remaining_attempts} attempt{"s" if remaining_attempts > 1 else ""} left.",
                                 "timestamp": time.strftime("%H:%M"),
                                 "requires_input": True,
                                 "step_num": current_step_index
@@ -311,7 +319,6 @@ def display_chat_history(chat_container):
         for idx, message in enumerate(st.session_state.chat_history):
             with st.chat_message(message["role"]):
                 st.markdown(f"<div class='step-indicator'>{message['timestamp']}</div>", unsafe_allow_html=True)
-
                 if message["role"] == "user":
                     st.write(message["content"])
                 else:
@@ -352,7 +359,7 @@ def display_chat_history(chat_container):
 
                 if message.get("requires_input"):
                     with st.container():
-                        col1, col2 = st.columns([7, 3])
+                        col1 = st.columns(1)[0]  # Create a single column
 
                         step_num = message.get("step_num")
                         current_step = None
@@ -368,35 +375,44 @@ def display_chat_history(chat_container):
                             st.session_state[step_key] = False
 
                         with col1:
+                            # Show Hint
                             if st.button("Show Hint", key=f"hint_{idx}"):
                                 # Add check for completed problem
                                 if st.session_state.problem_state['steps'] is None or step_num >= len(st.session_state.problem_state['steps']):
                                     st.warning("Cannot show hints for a completed problem.")
                                 else:    
-                                    remaining_hints = max(0, 3 - current_step.hint_count)
+                                    remaining_hints = max(0, current_step.hint_limit - current_step.hint_count)
                                     if remaining_hints > 0:
-                                        hint = current_step.explanation
+                                        previous_attempts = [msg["content"] for msg in st.session_state.chat_history if msg["role"] == "user" and msg.get("step_num") == step_num]
+                                        previous_hints = [msg["content"] for msg in st.session_state.chat_history if msg["role"] == "assistant" and msg.get("step_num") == step_num]
+                                        hint = st.session_state.solver.generate_hint(current_step, previous_attempts, previous_hints)
                                         current_step.hint_count += 1
 
-                                        hint_parts = hint.split("$")
-                                        for i, part in enumerate(hint_parts):
-                                            if i % 2 == 0:
-                                                if part.strip():
-                                                    st.write(part.strip())
-                                            else:
-                                                if part.strip():
-                                                    st.latex(part.strip())
+                                        st.session_state.chat_history.append({
+                                            "role": "assistant",
+                                            "content": hint,
+                                            "timestamp": time.strftime("%H:%M"),
+                                            "requires_input": False,
+                                            "step_num": st.session_state.problem_state['current_step']
+                                        })
+
                                     else:
                                         st.warning("You've reached the maximum number of hints for this step.")
 
-                        with col2:
+                            for i in range(step_num):
+                                prev_key = f"show_question_input_{i}"
+                                st.session_state[prev_key] = False
+
+                            # Ask Custom Question button
                             if st.button("Ask Custom Question", key=f"custom_{idx}"):
                                 st.session_state[step_key] = not st.session_state[step_key]
 
-                            if st.session_state[step_key]:
+                            # Only show input area for the current step
+                            if step_num == st.session_state.problem_state['current_step'] and st.session_state[step_key]:
                                 with st.form(key=f"ask_custom_form_{idx}"):
                                     user_question = st.text_input(
-                                        "",  # Label hidden
+                                        label="",  # Label hidden
+                                        label_visibility="hidden",
                                         key=f"hint_input_{idx}",
                                         placeholder="Need clarification? Ask Raze..."
                                     )
@@ -409,34 +425,29 @@ def display_chat_history(chat_container):
                                         if msg["role"] == "user" and msg.get("step_num") == step_num
                                     ]
 
-                                    remaining_hints = max(0, 3 - current_step.hint_count)
-                                    if remaining_hints > 0:
-                                        hint = st.session_state.solver.generate_custom_hint(
-                                            current_step,
-                                            user_question,
-                                            previous_attempts
-                                        )
-                                        current_step.hint_count += 1
+                                    answer = st.session_state.solver.generate_hint(
+                                        current_step,
+                                        user_question,
+                                        previous_attempts
+                                    )
 
-                                        hint_parts = hint.split("$")
-                                        for i, part in enumerate(hint_parts):
-                                            if i % 2 == 0:
-                                                if part.strip():
-                                                    st.write(part.strip())
-                                            else:
-                                                if part.strip():
-                                                    st.latex(part.strip())
-                                    else:
-                                        st.warning("You've reached the maximum number of hints for this step.")
+                                    answer_parts = answer.split("$")
+                                    for i, part in enumerate(answer_parts):
+                                        if i % 2 == 0:
+                                            if part.strip():
+                                                st.write(part.strip())
+                                        else:
+                                            if part.strip():
+                                                st.latex(part.strip())
 
                         if current_step:
-                            remaining_hints = max(0, 3 - current_step.hint_count)
+                            remaining_hints = max(0, current_step.hint_limit - current_step.hint_count)
                             st.caption(f"Remaining hints: {remaining_hints}")
 
     if st.session_state.problem_state['steps'] is not None and st.session_state.problem_state['awaiting_answer']:
         if not any(msg.get('requires_input') for msg in st.session_state.chat_history[-1:]):
             current_step_index = st.session_state.problem_state['current_step']
-            if current_step_index < len(st.session_state.problem_state['steps']):
+            if current_step_index < len(st.session_state.problem_state['steps']) and st.session_state.problem_state['new_step']:
                 step = st.session_state.problem_state['steps'][current_step_index]
                 st.session_state.chat_history.append({
                     "role": "assistant",
@@ -445,8 +456,10 @@ def display_chat_history(chat_container):
                     "requires_input": True,
                     "step_num": current_step_index
                 })
+                st.session_state.problem_state['new_step'] = False
                 st.rerun()
-            else:
+
+            elif current_step_index >= len(st.session_state.problem_state['steps']):
                 st.session_state.problem_state = {
                     'original_problem': None,
                     'steps': None,
@@ -455,5 +468,6 @@ def display_chat_history(chat_container):
                     'variables': set(),
                     'awaiting_answer': False,
                     'final_answer': None,
-                    'solution': None
+                    'solution': None,
+                    'new_step': True
                 } 
