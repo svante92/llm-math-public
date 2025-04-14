@@ -1,7 +1,7 @@
 {
-  "is_correct": true,
-  "explanation": "The student's answer correctly identifies that dividing by 5 is the operation needed to reverse multiplication by 5. This operation will isolate the variable x in an equation where x is multiplied by 5.",
-  "user_answer": "divide by 5",
-  "correct_answer": "To isolate $x$, divide both sides of the equation by 5.",
-  "step_question": "What operation will reverse the multiplication by 5 to isolate $x$?"
+  "is_correct": false,
+  "explanation": "The student's answer 'algebra' suggests a specific type of math problem, while the expected answer indicates that the type of problem is not specified. Therefore, the student's answer does not match the expected answer, as it assumes a specific category of math.",
+  "user_answer": "algebra",
+  "correct_answer": "The problem is not specified.",
+  "step_question": "What type of math problem is this?"
 }
