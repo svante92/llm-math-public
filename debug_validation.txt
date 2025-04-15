@@ -1,7 +1,7 @@
 {
-  "is_correct": false,
-  "explanation": "The student's answer 'algebra' suggests a specific type of math problem, while the expected answer indicates that the type of problem is not specified. Therefore, the student's answer does not match the expected answer, as it assumes a specific category of math.",
-  "user_answer": "algebra",
-  "correct_answer": "The problem is not specified.",
-  "step_question": "What type of math problem is this?"
+  "is_correct": true,
+  "explanation": "The student's answer is correct. When using the chain rule to differentiate (x - 2)^2, you first take the derivative of the outer function, which is 2 times the inner function (x - 2), and then multiply by the derivative of the inner function, which is 1. The student's answer, 2(x-2), is mathematically equivalent to the expected answer, as multiplying by 1 does not change the value.",
+  "user_answer": "2(x-2)",
+  "correct_answer": "The derivative is $\\frac{d}{dx}(x - 2)^2 = 2(x - 2)$.",
+  "step_question": "What is the derivative of $(x - 2)^2$ using the chain rule?"
 }

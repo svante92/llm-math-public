@@ -62,7 +62,8 @@ Remember, your goal is to help guide students so that they can learn the concept
 For each step, include:
 1. Clear instructions detailing the specific action or calculation required.
 2. A guiding question prompting the student to think about the relevant formula, concept, or calculation needed to complete this step.
-3. A concise review of the previous step, including the correct answer. This validates the student's solution, reinforces the critical concept or formula used, and ensures they understand how to apply it moving forward.
+3. An appropriate number of hints to help the student solve the step, depending on the difficulty of the step. For example, if the step is very easy, you may only need to provide 1 hint. If the step is medium difficulty, you may provide 2 hints. If the step is hard, you may provide 3 hints. The number of hints should not be fewer than 1 or more than 3.
+4. A concise review of the previous step, including the correct answer. This validates the student's solution, reinforces the critical concept or formula used, and ensures they understand how to apply it moving forward.
 
 IMPORTANT FORMATTING RULES:
 - ALL mathematical expressions MUST be enclosed in LaTeX delimiters ($...$)
@@ -292,7 +293,7 @@ The problem to solve is: {problem}
                     },
                     {
                         "role": "user", 
-                        "content": f"Determine if these answers are equivalent based on this question: {step_question}:\nStudent's Answer: {user_answer}\nExpected Answer: {correct_answer}"
+                        "content": f"You are a helpful math assistant that checks if a student’s answer is correct. Your job is to help correct mistakes. You will be very lenient when determining if a student’s answer is correct or incorrect, meaning that if the student’s answer is correct but has slight formatting errors like missing parenthesis, or is mathematically equivalent to the correct answer, you will mark it as correct. Under no circumstances will you call a student’s answer that is mathematically equivalent to the correct answer as incorrect. It’s very important that a correct or equivalent answer is never called incorrect, because that will confuse the student. For example, if I’m asked to find the derivative of (x-2)^2 using the chain rule, and I answer with 2(x-2) instead of 2(x-2)*1, that should be marked as correct because the answer is mathematically equivalent. {step_question}:\nStudent's Answer: {user_answer}\nExpected Answer: {correct_answer}"
                     }
                 ],
                 functions=functions,
@@ -318,6 +319,19 @@ The problem to solve is: {problem}
         except Exception as e:
             logging.error(f"Error validating answer with LLM: {str(e)}")
             raise Exception(f"Error validating answer with LLM: {str(e)}")
+    
+    def answer_custom_question(self, step: Step, question: str, previous_attempts: List[str], previous_hints: List[str]) -> str:
+        try:
+            functions = [
+                {
+                    "name": "answer_custom_question",
+                    "description": "Answer the student's question without giving away the solution to the step"
+                }
+            ]
+            return ""
+        except Exception as e:
+            return ""
+
 
     def generate_hint(self, step: Step, previous_attempts: List[str] = None, previous_hints: List[str] = None) -> str:
         """

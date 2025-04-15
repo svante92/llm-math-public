@@ -424,11 +424,16 @@ def display_chat_history(chat_container):
                                         for msg in st.session_state.chat_history
                                         if msg["role"] == "user" and msg.get("step_num") == step_num
                                     ]
+                                    previous_hints = [msg["content"]
+                                        for msg in st.session_state.chat_history
+                                        if msg["role"] == "assistant" and msg.get("step_num") == step_num
+                                    ]
 
-                                    answer = st.session_state.solver.generate_hint(
+                                    answer = st.session_state.solver.answer_custom_question(
                                         current_step,
                                         user_question,
-                                        previous_attempts
+                                        previous_attempts,
+                                        previous_hints
                                     )
 
                                     answer_parts = answer.split("$")
