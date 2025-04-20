@@ -317,7 +317,11 @@ def main_input_box():
 def display_chat_history(chat_container):
     with chat_container:
         for idx, message in enumerate(st.session_state.chat_history):
-            with st.chat_message(message["role"]):
+            if "assistant" in message["role"]:
+                avatar = "🤖"
+            else:
+                avatar = "🐷"
+            with st.chat_message(message["role"], avatar=avatar):
                 st.markdown(f"<div class='step-indicator'>{message['timestamp']}</div>", unsafe_allow_html=True)
                 if message["role"] == "user":
                     st.write(message["content"])
@@ -419,31 +423,27 @@ def display_chat_history(chat_container):
                                     ask_submitted = st.form_submit_button("Ask")
 
                                 if ask_submitted:
-                                    previous_attempts = [
-                                        msg["content"]
-                                        for msg in st.session_state.chat_history
-                                        if msg["role"] == "user" and msg.get("step_num") == step_num
-                                    ]
-                                    previous_hints = [msg["content"]
-                                        for msg in st.session_state.chat_history
-                                        if msg["role"] == "assistant" and msg.get("step_num") == step_num
-                                    ]
 
                                     answer = st.session_state.solver.answer_custom_question(
                                         current_step,
-                                        user_question,
-                                        previous_attempts,
-                                        previous_hints
+                                        user_question
                                     )
 
-                                    answer_parts = answer.split("$")
-                                    for i, part in enumerate(answer_parts):
-                                        if i % 2 == 0:
-                                            if part.strip():
-                                                st.write(part.strip())
-                                        else:
-                                            if part.strip():
-                                                st.latex(part.strip())
+                                    st.session_state.chat_history.append({
+                                        "role": "question_user",
+                                        "content": user_question,
+                                        "timestamp": time.strftime("%H:%M"),
+                                        "requires_input": False,
+                                        "step_num": st.session_state.problem_state['current_step']
+                                    })
+
+                                    st.session_state.chat_history.append({
+                                        "role": "assistant_custom_qa",
+                                        "content": answer,
+                                        "timestamp": time.strftime("%H:%M"),
+                                        "requires_input": False,
+                                        "step_num": st.session_state.problem_state['current_step']
+                                    })
 
                         if current_step:
                             remaining_hints = max(0, current_step.hint_limit - current_step.hint_count)

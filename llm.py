@@ -45,6 +45,25 @@ class MathSolver:
         """Initialize the OpenAI client"""
         self.client = openai.OpenAI(api_key=api_key)
         self.deepseek_client = openai.OpenAI(api_key=OPENROUTER_API_KEY, base_url="https://openrouter.ai/api/v1")
+        self.validate_system_prompt = """
+        You are a helpful math assistant checking if a student’s answer is correct. Be lenient — if their answer is 
+        mathematically equivalent to the correct one, even with minor formatting differences (like missing parentheses 
+        or writing cosx instead of cos(x)), mark it as correct.
+
+        However, if the answer involves multiple parts (e.g., an integrand, bounds, and variable), the student must follow 
+        the same order as the expected answer. If the order is wrong, mark it incorrect.
+
+        Never mark a mathematically correct answer as wrong. For example, 2(x-2) is equivalent to 2(x-2)*1 — don’t penalize 
+        small algebra steps like that.
+
+        In your explanation:
+        - Speak directly to the student
+        - Use plain English, no math terms
+        - Be brief
+        - Don’t reveal the correct answer
+        - Focus only on major math concepts, not small simplifications
+        - Don't use prompt-related language such as 'expected answer'
+        """
 
     def format_prompt(self, problem: str) -> str:
         return f"""You are an expert math teacher that helps college students understand how to solve problems that appear on their homework and exams. 
@@ -60,10 +79,14 @@ Make sure each step logically flows from the last, and that there is a clear way
 Remember, your goal is to help guide students so that they can learn the concepts and score better on their exams.
 
 For each step, include:
-1. Clear instructions detailing the specific action or calculation required.
-2. A guiding question prompting the student to think about the relevant formula, concept, or calculation needed to complete this step.
-3. An appropriate number of hints to help the student solve the step, depending on the difficulty of the step. For example, if the step is very easy, you may only need to provide 1 hint. If the step is medium difficulty, you may provide 2 hints. If the step is hard, you may provide 3 hints. The number of hints should not be fewer than 1 or more than 3.
-4. A concise review of the previous step, including the correct answer. This validates the student's solution, reinforces the critical concept or formula used, and ensures they understand how to apply it moving forward.
+
+1. **Instruction** — Clearly state *what* the student needs to do, without explaining *how* to do it. Avoid naming specific formulas, operations, or concepts here. For example, the instruction should NOT be "To isolate x, divide both sides by 5." Instead, a better version would be "To solve for x, it's necessary to isolate it in the equation."
+
+2. **Guiding Question** — Ask a thought-provoking question that nudges the student to recall or apply the correct strategy. Do not answer this question within the instruction. The guiding question should reference the needed concept or reasoning, not the exact operation.
+
+3. **Hints** — Based on the difficulty of the step, provide 1–3 hints that progressively help the student figure out *how* to complete the step. Hints may include formula reminders, strategy tips, or simplified versions of the task.
+
+4. **Review of Previous Step** — Give a concise summary of the prior step, including the correct answer, the core concept used, and how it connects to this step.
 
 IMPORTANT FORMATTING RULES:
 - ALL mathematical expressions MUST be enclosed in LaTeX delimiters ($...$)
@@ -256,6 +279,81 @@ The problem to solve is: {problem}
         except Exception as e:
             logging.error(f"Error dumping variable to file: {str(e)}")
     
+    def validate_second_stage(self, model1_output: str, user_answer: str, correct_answer: str, step_question: str) -> bool:
+        try:
+            
+            prompt = f"""
+            {step_question}:\nStudent's Answer: {user_answer}\nExpected Answer: {correct_answer}
+
+            ### MODEL1 OUTPUT ###
+            {model1_output}
+            """
+
+
+            functions = [
+                {
+                    "name": "validate_answer",
+                    "description": "Validate if the student's answer matches the expected answer.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "is_correct": {
+                                "type": "boolean",
+                                "description": "Whether the student's answer is correct or equivalent to the expected answer"
+                            },
+                            "explanation": {
+                                "type": "string",
+                                "description": "Explain to the student why the answer is correct or incorrect."
+                            }
+                        },
+                        "required": ["is_correct", "explanation"],
+                        "additionalProperties": False
+                    }
+                }
+            ]
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": """You are a second AI model tasked with verifying whether the first model correctly evaluated a student's answer. 
+                                    You must determine two things:
+                                    1. Did the first model correctly mark the student's answer as correct or incorrect, based on lenient equivalence criteria?
+                                    2. Did the first model's explanation follow the instructions: 
+                                    - It must be brief, in plain English, speak directly to the student, avoid math terms
+                                    - It should only address significant math reasoning, not small algebra steps like multiplying by 1.
+                                    - All mathematical expressions must be expressed in CORRECT Latex syntax, enclosed by $ on both sides.
+                                    - Do not use terms such as "expected answer" or other prompt-related language. The student does not know what "expected answer" means
+                                    - If the question asks for a series of components in a specific order, the student must follow the same order as listed in the question. If the order is wrong, mark it incorrect. For example, if the question asks "What is the integrand, upper limit, and lower limit?", the student's answer components must correspond to the *exact* same order.
+
+                                    If the first model’s evaluation is fully correct and its explanation follows the rules, return its output exactly.
+                                    If either the correctness judgment or explanation is wrong or violates the guidelines, return a corrected version.
+                                    """
+                    },
+                    {
+                        "role": "user", 
+                        "content": prompt
+                    }
+                ],
+                functions=functions,
+                function_call={"name": "validate_answer"},
+                temperature=0.3
+            )
+
+            if response.choices[0].message.function_call is not None:
+                result = json.loads(response.choices[0].message.function_call.arguments)
+
+                # Ensure both values are returned
+                if "is_correct" not in result or "explanation" not in result:
+                    raise ValueError("Missing required fields in response")
+                return result
+
+
+        except Exception as e:
+            logging.error(f"Error validating answer with model2: {str(e)}")
+            raise Exception(f"Error validating answer with model2: {str(e)}")
+
+    
     def validate_step_answer_llm(self, user_answer: str, correct_answer: str, step_question: str) -> bool:
         """
         Use the LLM to compare the user's answer and the expected answer.
@@ -274,7 +372,14 @@ The problem to solve is: {problem}
                             },
                             "explanation": {
                                 "type": "string",
-                                "description": "Briefly explain to the student why the answer is correct or incorrect using relevant math concepts. Use only plain English and do not use any mathematical expressions. Do not mention anything about expected responses, answers, previous attempts, or other prompt-related language. Focus on the concept behind the answer."
+                                "description": """Explain to the student why the answer is correct or incorrect. Make sure to follow these steps:
+                                1. Do not include any math terms in the answer, just plain English. 
+                                2. Make sure it's brief.
+                                3. DO NOT REVEAL THE CORRECT ANSWER, only explain why the answer is correct or incorrect.
+                                4. Make sure to address the student directly like you're speaking to them.
+                                5. Only talk about the significant and relevant math concepts for that step, meaning smaller algebraic operations shouldn’t be mentioned. For example, if the correct answer is 8(x-2) and the student answered 8(x-2)*1, you don’t have to state the fact that these are equivalent expressions in the explanation. 
+                                ## IMPORTANT ##
+                                6. DO NOT use prompt-related language such as 'expected answer.'"""
                             }
                         },
                         "required": ["is_correct", "explanation"],
@@ -289,30 +394,35 @@ The problem to solve is: {problem}
                 messages=[
                     {
                         "role": "system", 
-                        "content": "You are a helpful assistant that checks if the student's answer is correct. The answer doesnt have to match the expected answer exactly, but it should be relatively equivalent."
+                        "content": self.validate_system_prompt
                     },
                     {
                         "role": "user", 
-                        "content": f"You are a helpful math assistant that checks if a student’s answer is correct. Your job is to help correct mistakes. You will be very lenient when determining if a student’s answer is correct or incorrect, meaning that if the student’s answer is correct but has slight formatting errors like missing parenthesis, or is mathematically equivalent to the correct answer, you will mark it as correct. Under no circumstances will you call a student’s answer that is mathematically equivalent to the correct answer as incorrect. It’s very important that a correct or equivalent answer is never called incorrect, because that will confuse the student. For example, if I’m asked to find the derivative of (x-2)^2 using the chain rule, and I answer with 2(x-2) instead of 2(x-2)*1, that should be marked as correct because the answer is mathematically equivalent. {step_question}:\nStudent's Answer: {user_answer}\nExpected Answer: {correct_answer}"
+                        "content": f"{step_question}:\nStudent's Answer: {user_answer}\nExpected Answer: {correct_answer}"
                     }
                 ],
                 functions=functions,
                 function_call={"name": "validate_answer"},
-                temperature=0.0
+                temperature=0.3
             )
             
             # Log the full response for debugging
             logging.debug(f"API Response: {response}")
             
             if response.choices[0].message.function_call is not None:
-                result = json.loads(response.choices[0].message.function_call.arguments)
-                logging.debug(f"Parsed result: {result}")  # Log the parsed result
+                model1_result = json.loads(response.choices[0].message.function_call.arguments)
+                logging.debug(f"Parsed result: {model1_result}")  # Log the parsed result
+                print("MODEL1_RESULT")
+                print(model1_result)
+                model2_result = self.validate_second_stage(model1_result, user_answer, correct_answer, step_question)
+                print("MODEL2_RESULT")
+                print(model2_result)
                 
                 # Ensure both values are returned
-                if "is_correct" not in result or "explanation" not in result:
+                if "is_correct" not in model2_result or "explanation" not in model2_result:
                     raise ValueError("Missing required fields in response")
-                    
-                return result["is_correct"], result["explanation"]
+                
+                return model2_result["is_correct"], model2_result["explanation"]
             else:
                 raise Exception("No function call in response")
 
@@ -320,15 +430,85 @@ The problem to solve is: {problem}
             logging.error(f"Error validating answer with LLM: {str(e)}")
             raise Exception(f"Error validating answer with LLM: {str(e)}")
     
-    def answer_custom_question(self, step: Step, question: str, previous_attempts: List[str], previous_hints: List[str]) -> str:
+    def answer_custom_question(self, step: Step, question: str) -> str:
         try:
             functions = [
                 {
                     "name": "answer_custom_question",
-                    "description": "Answer the student's question without giving away the solution to the step"
+                    "description": "Answer the student's question without giving away the solution to the step",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "answer": {
+                                "type": "string",
+                                "description": "A clarifying conceptual answer to the student's question without revealing the answer"
+                            }
+                        },
+                        "required": ["answer"]
+                    }
                 }
             ]
-            return ""
+
+            prompt = f"""
+            # CONTEXT #
+            You are a math tutor specializing in high-school to entry college-level mathematics, who assists students in understanding the intuition behind solving math problems. In a particular step of a problem, a student asks a question to you that you must answer without revealing the answer to the step or the problem.
+
+            Current step instruction: {step.instruction}
+            Current step question: {step.question}
+            Expected answer: {step.answer}
+
+            Student question: {question}
+
+            # OBJECTIVE #
+            Your task is to answer the student's question on a conceptual level WITHOUT revealing the answer to the step. You may use numbers to illustrate a point, but you CANNOT use numerical values used directly in the problem. If the student's question is directly asking for the answer, remind them that they may ONLY ask questions to clarify unfamiliar concepts. 
+            
+            For example, student questions permitted include "What is the constant multiple rule?" or "What is the purpose of a derivative?"
+            
+            Student questions that are NOT permitted include "What is the answer to this problem?" or "What is the factored form of x^2 - 6x + 9?"
+
+            Additionally, the answer must:
+            1. NOT reveal the current step's answer, either indirectly or directly.
+            2. Be concise, to the point, and a maximum of 50 words.
+            3. Clarify that only questions that seek to clarify an unfamiliar concept are allowed if the question aims to seek a direct answer or calculation, OR asks a totally unrelated question that is outside the domain of math, such as "Why are lions carnivores?"
+            4. Use proper LaTeX formatting for ALL mathematical expressions ($...$)
+            5. Avoid excessive use of numerical expressions or numbers. Use VARIABLES such as x, y instead to explain how a concept can be applied to numerical values.
+            6. NOT use the terms "previous attempts," "previous hints," "expected answer," or other prompt-related language directly. Those terms are only provided for context in generation of a hint concerned with the CURRENT step.
+
+            # STYLE #
+            Write in an informative and instructive style that would be helpful in aiding a student's understanding and intuition of the main concept involved in the step. The style should also be tailored to the perceived skill level of the user. For instance, if the step requires finding the derivative or using the power rule, explain it as if the student is enrolled in a high school introductory calculus class, using appropriate terminology and detail for that level. 
+
+            # TONE #
+            Write in a supportive and casual tone. Remember that your goal is to resemble a math tutor guiding a student through encouragement and reinforcement of key concepts.
+
+            # AUDIENCE #
+            The target audience is a high school or college student seeking help for their math homework in preparation for an upcoming exam.
+
+            # RESPONSE FORMAT #
+            ALL mathematical expressions should be written with proper LaTeX formatting.
+
+            """
+
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": "You are a math tutor who NEVER reveals answers directly. Your role is to guide students to understanding through hints and explanations. Under NO circumstances should you provide the actual answer or a direct solution. If a student asks for the answer directly, redirect them to think about the process."
+                    },
+                    {
+                        "role": "user", 
+                        "content": prompt
+                    }
+                ],
+                functions=functions,
+                function_call={"name": "answer_custom_question"},
+                temperature=0.7
+            )
+
+            if response.choices[0].message.function_call is not None:
+                result = json.loads(response.choices[0].message.function_call.arguments)
+                return result["answer"]
+            
         except Exception as e:
             return ""
 
@@ -420,7 +600,7 @@ The problem to solve is: {problem}
 
             if response.choices[0].message.function_call is not None:
                 result = json.loads(response.choices[0].message.function_call.arguments)
-                return result["hint"]
+                return "**Hint:** " + result["hint"]
             else:
                 raise Exception("No hint generated")
 
