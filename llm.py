@@ -88,6 +88,8 @@ For each step, include:
 
 4. **Review of Previous Step** — Give a concise summary of the prior step, including the correct answer, the core concept used, and how it connects to this step.
 
+5. **Answer** - The answer to the step should NOT be expliclty included in the step, but MUST be generated during the problem solution step generation. This is a required field.
+
 IMPORTANT FORMATTING RULES:
 - ALL mathematical expressions MUST be enclosed in LaTeX delimiters ($...$)
 - For complex mathematical structures (matrices, aligned equations, etc.):
@@ -106,6 +108,9 @@ IMPORTANT FORMATTING RULES:
     - Remove any trailing punctuation
     - If text is needed, keep it outside the LaTeX delimiters
     - Example: The solution is $x = 5$ units
+
+## IMPORTANT ##
+Double check Latex syntax to ensure no missing \ or letters are missing.
 
 GRAPH QUERY RULES:
 - For most steps, show a graph to help the user understand a concept. Show graphs for steps with equations that can be represented as a graph
@@ -127,7 +132,7 @@ The problem to solve is: {problem}
         Solve the problem and return the full solution as a string.
         """
         prompt = f"""
-        Solve the following math problem and provide a detailed solution of each step in the solution:
+        Solve the following math problem and provide a detailed solution of each step in the solution. Only solve what is *EXPLICITLY* stated in each step, DO NOT do anything beyond what the question asks for. 
         
         Problem: {problem}
         
@@ -165,7 +170,12 @@ The problem to solve is: {problem}
             functions = [
                 {
                     "name": "get_math_solution",
-                    "description": "Provide the solution steps for the math problem solution.",
+                    "description": (
+                        "Generate a detailed step-by-step solution for a math problem. "
+                        "Each step must include 'instruction', 'question', 'answer', and 'hint_limit'. "
+                        "The 'answer' field MUST ALWAYS be filled with a best-effort attempt, even if uncertain. "
+                        "Never omit or leave it blank."
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -195,18 +205,20 @@ The problem to solve is: {problem}
 
             print("Calling API for solution steps")
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4.1",
                 messages=[
-                    {"role": "system", "content": "You are a math teacher who takes a math problem and solution to that problem, and breaks down solution into clear steps. When calling the function `get_math_solution`, always fill in ALL required fields. Especially make sure every step includes an `answer` string, even if it's a guess or simple calculation result."},
+                    {"role": "system", "content": "You are a math teacher who takes a math problem and solution to that problem, and breaks down solution into clear steps. When calling the function `get_math_solution`, always fill in ALL required fields. **IMPORTANT** Make sure every step includes an `answer` string"},
                     {"role": "user", "content": self.format_prompt(problem_solution)}
                 ],
                 functions=functions,
                 function_call={"name": "get_math_solution"},
                 temperature=0.4,
             )
-
             print("API call completed")
             message = response.choices[0].message
+            print("-" * 100)
+            print(message)
+            print("-" * 100)
             print("done")
 
             if message.function_call is not None:
@@ -312,20 +324,31 @@ The problem to solve is: {problem}
                 }
             ]
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4.1",
                 messages=[
                     {
                         "role": "system", 
                         "content": """You are a second AI model tasked with verifying whether the first model correctly evaluated a student's answer. 
                                     You must determine two things:
-                                    1. Did the first model correctly mark the student's answer as correct or incorrect, based on lenient equivalence criteria?
+                                    1. Did the first model correctly mark the student's answer as correct or incorrect?
                                     2. Did the first model's explanation follow the instructions: 
-                                    - It must be brief, in plain English, speak directly to the student, avoid math terms
-                                    - It should only address significant math reasoning, not small algebra steps like multiplying by 1.
-                                    - All mathematical expressions must be expressed in CORRECT Latex syntax, enclosed by $ on both sides.
-                                    - Do not use terms such as "expected answer" or other prompt-related language. The student does not know what "expected answer" means
-                                    - If the question asks for a series of components in a specific order, the student must follow the same order as listed in the question. If the order is wrong, mark it incorrect. For example, if the question asks "What is the integrand, upper limit, and lower limit?", the student's answer components must correspond to the *exact* same order.
+                                    a) It must be brief, in plain English, speak directly to the student, avoid math terms, and NOT reveal the correct answer
+                                    b) It should only address significant math reasoning, not small algebra steps like multiplying by 1.
+                                    c) All mathematical expressions must be expressed in CORRECT Latex syntax, enclosed by $ on both sides. 
+                                    d) Do not use terms such as "expected answer" or other prompt-related language. The student does not know what "expected answer" means
 
+                                    e) If a question asks for components in a specific order, the student must list them in that exact order. Do not require labels or identifiers—just match the each component sequentially to the order in the expected answer.
+
+                                    ✅ If the values appear in the correct order, mark the answer correct.
+                                    ❌ If any part is out of order, mark it incorrect—even if all components are present.
+
+                                    **EXAMPLE**: If the question contains an integral from 1 to 3 over x^2, then
+                                    ✅ Correct Example: If the question asks for “upper limit, lower limit, integrand,” then “3, 1, x^2” is correct.
+                                    ❌ Incorrect Example: “x^2, 1, 3” is wrong, even if the values are all there.
+
+                                    Do not rewrite or reorder the student's answer in explanations. Maintain the original order given in the question
+
+                                    ## KEY POINT ##
                                     If the first model’s evaluation is fully correct and its explanation follows the rules, return its output exactly.
                                     If either the correctness judgment or explanation is wrong or violates the guidelines, return a corrected version.
                                     """
@@ -390,7 +413,7 @@ The problem to solve is: {problem}
 
             # Add logging to see the actual API response
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4.1",
                 messages=[
                     {
                         "role": "system", 
@@ -489,7 +512,7 @@ The problem to solve is: {problem}
             """
 
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4.1",
                 messages=[
                     {
                         "role": "system", 
@@ -582,7 +605,7 @@ The problem to solve is: {problem}
             """
 
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4.1",
                 messages=[
                     {
                         "role": "system", 
@@ -621,14 +644,17 @@ The problem to solve is: {problem}
                     for i, attempt in enumerate(step.user_attempts)
                 ])
                 steps_info += f"""
-Step {idx + 1}:
-Instruction: {step.instruction}
-Question: {step.question}
-Your Attempts:
-{attempts_text}
-Performance: {performance}
-"""
+                Step {idx + 1}:
+                Instruction: {step.instruction}
+                Question: {step.question}
+                Your Attempts:
+                {attempts_text}
+                Performance: {performance}
+                """
 
+            print("-" * 100)
+            print(steps_info)
+            print("-" * 100)
             prompt = f"""
 The student has completed solving the following problem:
 Problem: {solution.original_problem}

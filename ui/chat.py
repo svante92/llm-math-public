@@ -19,6 +19,12 @@ def handle_user_input():
         if submit_button:
             st.session_state.user_input_submitted = True
             st.session_state.user_input = st.session_state.input_box
+            st.session_state.chat_history.append({
+                "role": "user",
+                "content": st.session_state.user_input,
+                "timestamp": time.strftime("%H:%M"),
+                "requires_input": False,
+            })
             # Update the input buffer when the form is submitted
             st.session_state.input_buffer = st.session_state.input_box
 
@@ -92,6 +98,8 @@ def handle_user_input():
                     logging.debug("Starting handle_user_input")
                     
                     is_correct, explanation = st.session_state.solver.validate_step_answer_llm(user_input, expected_answer, current_step.question)
+
+                    current_step.user_attempts.append({"is_correct": is_correct, "user_answer": user_input})
                     
                     # Dump the results to a file for inspection
                     st.session_state.solver.dump_to_file({

@@ -1,7 +1,7 @@
 {
   "is_correct": true,
-  "explanation": "Yes, substituting that value for x makes the equation true. You did a good job recognizing that.",
-  "user_answer": "i think so",
-  "correct_answer": "Substituting $x = \\frac{3}{5}$ results in $5 \\times \\frac{3}{5} = 3$, which is true.",
-  "step_question": "Does substituting $x = \\frac{3}{5}$ satisfy the original equation $5x = 3$?"
+  "explanation": "Great job! Your answer is correct and matches the simplest form needed.",
+  "user_answer": "x=3/5",
+  "correct_answer": "The simplest form is $x = \\frac{3}{5}$.",
+  "step_question": "After isolating $x$, what is the simplest fractional form of the solution?"
 }
