@@ -115,8 +115,8 @@ The problem to solve is: {problem}
 
             start_time = time.time() # Start Time Log
 
-            response = self.deepseek_client.chat.completions.create(
-                model="deepseek/deepseek-r1",
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant"},
                     {
@@ -128,7 +128,7 @@ The problem to solve is: {problem}
             )
             end_time = time.time() # End Time Log
             elapsed_time = end_time - start_time
-            logging.info(f"TIME LOG: Deepseek request took {elapsed_time:.2f} seconds.")
+            logging.info(f"TIME LOG: OpenAI Logic request took {elapsed_time:.2f} seconds.")
 
             print(response.choices[0].message.content)
             return response.choices[0].message.content
@@ -149,10 +149,10 @@ The problem to solve is: {problem}
             print(problem_solution)
             print("done1")
 
-            deepseek_time = time.time() - start_time # Deepseek Total Time
-            logging.info(f"TIME LOG: Total time for Deepseek response: {deepseek_time:.2f} seconds.")
+            logic = time.time() - start_time # OpenAI Steps Total Time
+            logging.info(f"TIME LOG: Total time for OpenAI Logic response: {logic:.2f} seconds.")
 
-            start_time_openai = time.time() # Start Time Log for OpenAI
+            start_time_steps = time.time() # Start Time Log for OpenAI Steps Request
 
             print("Preparing function schema")
 
@@ -231,11 +231,11 @@ The problem to solve is: {problem}
                 if len(math_solution.steps) > 10:
                     raise ValueError("Too many solution steps")
                 
-                end_time_openai = time.time() # End Time for Open AI 
-                openai_time = end_time_openai - start_time_openai # Total Time for OpenAI
-                logging.info(f"TIME LOG: OpenAI request took {openai_time:.2f} seconds.")
+                end_time_steps = time.time() # End Time for Open AI 
+                steps_time = end_time_steps - start_time_steps # Total Time for OpenAI
+                logging.info(f"TIME LOG: OpenAI Steps request took {steps_time:.2f} seconds.")
 
-                total_time = end_time_openai - start_time # Total Time for entire process
+                total_time = end_time_steps - start_time # Total Time for entire process
                 logging.info(f"TIME LOG: Total processing time: {total_time:.2f} seconds.")
                 return math_solution
             else:
