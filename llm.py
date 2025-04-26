@@ -13,7 +13,6 @@ from graph import generate_graph_from_query  # Import the graph generation funct
 # Load environment variables from .env file
 load_dotenv()
 API_KEY = os.getenv("OPENAI_API_KEY")  # Get the API key from the environment]
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 # Set this up at the start of your program
 logging.basicConfig(
@@ -26,7 +25,7 @@ class Step(BaseModel):
     instruction: str
     question: str
     answer: str
-    explanation: str
+    hint_limit: int
     hint_count: int = 0
     graph_query: str = None  # Add this to store the graph query
     graph_image: bytes = None  # Add this to store the graph image data
@@ -44,7 +43,25 @@ class MathSolver:
     def __init__(self, api_key: str):
         """Initialize the OpenAI client"""
         self.client = openai.OpenAI(api_key=api_key)
-        self.deepseek_client = openai.OpenAI(api_key=OPENROUTER_API_KEY, base_url="https://openrouter.ai/api/v1")
+        self.validate_system_prompt = """
+        You are a helpful math assistant checking if a student’s answer is correct. Be lenient — if their answer is 
+        mathematically equivalent to the correct one, even with minor formatting differences (like missing parentheses 
+        or writing cosx instead of cos(x)), mark it as correct.
+
+        However, if the answer involves multiple parts (e.g., an integrand, bounds, and variable), the student must follow 
+        the same order as the expected answer. If the order is wrong, mark it incorrect.
+
+        Never mark a mathematically correct answer as wrong. For example, 2(x-2) is equivalent to 2(x-2)*1 — don’t penalize 
+        small algebra steps like that.
+
+        In your explanation:
+        - Speak directly to the student
+        - Use plain English, no math terms
+        - Be brief
+        - Don’t reveal the correct answer
+        - Focus only on major math concepts, not small simplifications
+        - Don't use prompt-related language such as 'expected answer'
+        """
 
     def format_prompt(self, problem: str) -> str:
         return f"""You are an expert math teacher that helps college students understand how to solve problems that appear on their homework and exams. 
@@ -60,9 +77,14 @@ Make sure each step logically flows from the last, and that there is a clear way
 Remember, your goal is to help guide students so that they can learn the concepts and score better on their exams.
 
 For each step, include:
-1. Clear instructions detailing the specific action or calculation required.
-2. A guiding question prompting the student to think about the relevant formula, concept, or calculation needed to complete this step.
-3. A concise review of the previous step, including the correct answer. This validates the student's solution, reinforces the critical concept or formula used, and ensures they understand how to apply it moving forward.
+
+1. **Instruction** — Clearly state *what* the student needs to do, without explaining *how* to do it. Avoid naming specific formulas, operations, or concepts here. For example, the instruction should NOT be "To isolate x, divide both sides by 5." Instead, a better version would be "To solve for x, it's necessary to isolate it in the equation."
+
+2. **Guiding Question** — Ask a thought-provoking question that nudges the student to recall or apply the correct strategy. Do not answer this question within the instruction. The guiding question should reference the needed concept or reasoning, not the exact operation.
+
+3. **Hints** — Based on the difficulty of the step, provide 1–3 hints that progressively help the student figure out *how* to complete the step. Hints may include formula reminders, strategy tips, or simplified versions of the task.
+
+4. **Review of Previous Step** — Give a concise summary of the prior step, including the correct answer, the core concept used, and how it connects to this step.
 
 IMPORTANT FORMATTING RULES:
 - ALL mathematical expressions MUST be enclosed in LaTeX delimiters ($...$)
@@ -82,6 +104,9 @@ IMPORTANT FORMATTING RULES:
     - Remove any trailing punctuation
     - If text is needed, keep it outside the LaTeX delimiters
     - Example: The solution is $x = 5$ units
+
+## IMPORTANT ##
+Double check Latex syntax to ensure no missing \ or letters are missing.
 
 GRAPH QUERY RULES:
 - For most steps, show a graph to help the user understand a concept. Show graphs for steps with equations that can be represented as a graph
@@ -103,15 +128,15 @@ The problem to solve is: {problem}
         Solve the problem and return the full solution as a string.
         """
         prompt = f"""
-        Solve the following math problem and provide a detailed solution of each step in the solution:
+        Solve the following math problem and provide a detailed solution of each step in the solution. Only solve what is *EXPLICITLY* stated in each step, DO NOT do anything beyond what the question asks for. 
         
         Problem: {problem}
         
         """
         
         try:
-            response = self.deepseek_client.chat.completions.create(
-                model="deepseek/deepseek-r1",
+            response = self.client.chat.completions.create(
+                model="o3-mini",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant"},
                     {
@@ -121,7 +146,6 @@ The problem to solve is: {problem}
                 ],
                 stream=False
             )
-            print(response.choices[0].message.content)
             return response.choices[0].message.content
 
         except Exception as e:
@@ -142,7 +166,13 @@ The problem to solve is: {problem}
             functions = [
                 {
                     "name": "get_math_solution",
-                    "description": "Provide the solution steps for the math problem solution.",
+                    "description": (
+                        "Generate a detailed step-by-step solution for a math problem. "
+                        "Each step must include 'instruction', 'question', 'answer', and 'hint_limit'. "
+                        "'answer' MUST ALWAYS be filled, even if it is a rough or uncertain best-effort guess. "
+                        "NEVER omit 'answer'. If unsure, provide the most reasonable attempt possible."
+                        "Include a graph query for each step if applicable."
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -153,11 +183,11 @@ The problem to solve is: {problem}
                                     "properties": {
                                         "instruction": {"type": "string"},
                                         "question": {"type": "string"},
-                                        "answer": {"type": "string"},
-                                        "explanation": {"type": "string"},
-                                        "graph_query": {"type": "string"}
+                                        "answer": {"type": "string",},
+                                        "hint_limit": {"type": "integer"},
+                                        "graph_query": {"type": "string"},
                                     },
-                                    "required": ["instruction", "question", "answer", "explanation"],
+                                    "required": ["instruction", "question", "answer", "hint_limit"],
                                     "additionalProperties": False
                                 }
                             },
@@ -174,16 +204,17 @@ The problem to solve is: {problem}
             response = self.client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
-                    {"role": "system", "content": "You are a math teacher who takes a math problem and solution to that problem, and breaks down solution into clear steps."},
+                    {"role": "system", "content": "You are a math teacher who takes a math problem and solution to that problem, and breaks down solution into clear steps. When calling the function `get_math_solution`, always fill in ALL required fields."},
                     {"role": "user", "content": self.format_prompt(problem_solution)}
                 ],
                 functions=functions,
                 function_call={"name": "get_math_solution"},
-                temperature=0.4,
             )
-
             print("API call completed")
             message = response.choices[0].message
+            print("-" * 100)
+            print(message)
+            print("-" * 100)
             print("done")
 
             if message.function_call is not None:
@@ -273,7 +304,14 @@ The problem to solve is: {problem}
                             },
                             "explanation": {
                                 "type": "string",
-                                "description": "Explain to the student why the answer is correct or incorrect. Do not include any math terms in the answer just plain english Make sure its brief. Also do not reveal the correct answer, only explain why the answer is correct or incorrect. Make sure to address the student directly like youre speaking to them"
+                                "description": """Explain to the student why the answer is correct or incorrect. Make sure to follow these steps:
+                                1. Do not include any math terms in the answer, just plain English. 
+                                2. Make sure it's brief.
+                                3. DO NOT REVEAL THE CORRECT ANSWER, only explain why the answer is correct or incorrect.
+                                4. Make sure to address the student directly like you're speaking to them.
+                                5. Only talk about the significant and relevant math concepts for that step, meaning smaller algebraic operations shouldn’t be mentioned. For example, if the correct answer is 8(x-2) and the student answered 8(x-2)*1, you don’t have to state the fact that these are equivalent expressions in the explanation. 
+                                ## IMPORTANT ##
+                                6. DO NOT use prompt-related language such as 'expected answer.'"""
                             }
                         },
                         "required": ["is_correct", "explanation"],
@@ -288,49 +326,130 @@ The problem to solve is: {problem}
                 messages=[
                     {
                         "role": "system", 
-                        "content": "You are a helpful assistant that checks if the student's answer is correct. The answer doesnt have to match the expected answer exactly, but it should be relatively equivalent."
+                        "content": self.validate_system_prompt
                     },
                     {
                         "role": "user", 
-                        "content": f"Determine if these answers are equivalent based on this question: {step_question}:\nStudent's Answer: {user_answer}\nExpected Answer: {correct_answer}"
+                        "content": f"{step_question}:\nStudent's Answer: {user_answer}\nExpected Answer: {correct_answer}"
                     }
                 ],
                 functions=functions,
                 function_call={"name": "validate_answer"},
-                temperature=0.0
             )
             
             # Log the full response for debugging
             logging.debug(f"API Response: {response}")
             
             if response.choices[0].message.function_call is not None:
-                result = json.loads(response.choices[0].message.function_call.arguments)
-                logging.debug(f"Parsed result: {result}")  # Log the parsed result
+                response = json.loads(response.choices[0].message.function_call.arguments)
+                logging.debug(f"Parsed result: {response}")  # Log the parsed result
                 
                 # Ensure both values are returned
-                if "is_correct" not in result or "explanation" not in result:
+                if "is_correct" not in response or "explanation" not in response:
                     raise ValueError("Missing required fields in response")
-                    
-                return result["is_correct"], result["explanation"]
+                
+                return response["is_correct"], response["explanation"]
             else:
                 raise Exception("No function call in response")
 
         except Exception as e:
             logging.error(f"Error validating answer with LLM: {str(e)}")
             raise Exception(f"Error validating answer with LLM: {str(e)}")
+    
+    def answer_custom_question(self, step: Step, question: str) -> str:
+        try:
+            functions = [
+                {
+                    "name": "answer_custom_question",
+                    "description": "Answer the student's question without giving away the solution to the step",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "answer": {
+                                "type": "string",
+                                "description": "A clarifying conceptual answer to the student's question without revealing the answer"
+                            }
+                        },
+                        "required": ["answer"]
+                    }
+                }
+            ]
 
-    def generate_custom_hint(self, step: Step, user_question: str, previous_attempts: List[str] = None) -> str:
+            prompt = f"""
+            # CONTEXT #
+            You are a math tutor specializing in high-school to entry college-level mathematics, who assists students in understanding the intuition behind solving math problems. In a particular step of a problem, a student asks a question to you that you must answer without revealing the answer to the step or the problem.
+
+            Current step instruction: {step.instruction}
+            Current step question: {step.question}
+            Expected answer: {step.answer}
+
+            Student question: {question}
+
+            # OBJECTIVE #
+            Your task is to answer the student's question on a conceptual level WITHOUT revealing the answer to the step. You may use numbers to illustrate a point, but you CANNOT use numerical values used directly in the problem. If the student's question is directly asking for the answer, remind them that they may ONLY ask questions to clarify unfamiliar concepts. 
+            
+            For example, student questions permitted include "What is the constant multiple rule?" or "What is the purpose of a derivative?"
+            
+            Student questions that are NOT permitted include "What is the answer to this problem?" or "What is the factored form of x^2 - 6x + 9?"
+
+            Additionally, the answer must:
+            1. NOT reveal the current step's answer, either indirectly or directly.
+            2. Be concise, to the point, and a maximum of 50 words.
+            3. Clarify that only questions that seek to clarify an unfamiliar concept are allowed if the question aims to seek a direct answer or calculation, OR asks a totally unrelated question that is outside the domain of math, such as "Why are lions carnivores?"
+            4. Use proper LaTeX formatting for ALL mathematical expressions ($...$)
+            5. Avoid excessive use of numerical expressions or numbers. Use VARIABLES such as x, y instead to explain how a concept can be applied to numerical values.
+            6. NOT use the terms "previous attempts," "previous hints," "expected answer," or other prompt-related language directly. Those terms are only provided for context in generation of a hint concerned with the CURRENT step.
+
+            # STYLE #
+            Write in an informative and instructive style that would be helpful in aiding a student's understanding and intuition of the main concept involved in the step. The style should also be tailored to the perceived skill level of the user. For instance, if the step requires finding the derivative or using the power rule, explain it as if the student is enrolled in a high school introductory calculus class, using appropriate terminology and detail for that level. 
+
+            # TONE #
+            Write in a supportive and casual tone. Remember that your goal is to resemble a math tutor guiding a student through encouragement and reinforcement of key concepts.
+
+            # AUDIENCE #
+            The target audience is a high school or college student seeking help for their math homework in preparation for an upcoming exam.
+
+            # RESPONSE FORMAT #
+            ALL mathematical expressions should be written with proper LaTeX formatting.
+
+            """
+
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": "You are a math tutor who NEVER reveals answers directly. Your role is to guide students to understanding through hints and explanations. Under NO circumstances should you provide the actual answer or a direct solution. If a student asks for the answer directly, redirect them to think about the process."
+                    },
+                    {
+                        "role": "user", 
+                        "content": prompt
+                    }
+                ],
+                functions=functions,
+                function_call={"name": "answer_custom_question"},
+            )
+
+            if response.choices[0].message.function_call is not None:
+                result = json.loads(response.choices[0].message.function_call.arguments)
+                return result["answer"]
+            
+        except Exception as e:
+            return ""
+
+
+    def generate_hint(self, step: Step, previous_attempts: List[str] = None, previous_hints: List[str] = None) -> str:
         """
         Generate a custom hint based on the user's question about a specific step.
         """
         try:
-            if step.hint_count >= 3:
+            if step.hint_count >= step.hint_limit:
                 return "You've reached the maximum number of hints for this step. Try reviewing the previous hints and attempts."
 
             functions = [
                 {
                     "name": "generate_hint",
-                    "description": "Generate a helpful hint that addresses the student's question.",
+                    "description": "Generate a helpful hint that helps lead the student toward the answer",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -345,24 +464,46 @@ The problem to solve is: {problem}
             ]
 
             previous_attempts_text = "\n".join([f"- {attempt}" for attempt in (previous_attempts or [])])
-            
+            previous_hints_text = "\n".join([f"- {hint}" for hint in (previous_hints or [])])
+
+
             prompt = f"""
+            # CONTEXT #
+            You are a math tutor specializing in high-school to entry college-level mathematics, who assists students in understanding the intuition behind solving math problems. In a step of a particular math problem, a student requests a hint that you must provide. The student may have had requested previous hints or submitted incorrect attempts already.
+
             Current step instruction: {step.instruction}
             Current step question: {step.question}
-            
-            Student's question: {user_question}
-            
+            Expected answer: {step.answer}
+
             Previous attempts:
             {previous_attempts_text if previous_attempts else "No previous attempts"}
-            
-            Provide a helpful hint that:
-            1. Addresses the specific step.
-            2. States the specific idea or formula needed to solve this step, and includes any relevant numbers from the problem.
-            3. If they had previous attempts, explain why they were incorrect
-            4. Gives a high-level overview of how to solve the step.
-            5. Asks the user a guiding question to help them solve the step.
-            6. Does NOT give them the final answer. Never give the answer in the hint, only guide the student in the right direction.
-            7. Use proper LaTeX formatting for ALL mathematical expressions ($...$)
+
+            Previous hints:
+            {previous_hints_text if previous_hints else "No previous hints"}
+
+            # OBJECTIVE #
+            Your task is to provide a helpful hint that DOES NOT reveal the answer to the current step question. The hint should:
+            1. State the specific idea or formula needed to solve this step. For example, a potential concept in finding the derivative of an expression is the chain rule.
+            2. Explain why any previous attempts were incorrect.
+            3. Give a high-level overview of how to solve the step WITHOUT revealing the answer. Limit use of mathematical expressions, and focus more on explaining the main concept of the step conceptually WITH WORDS.
+            4. Use proper LaTeX formatting for ALL mathematical expressions ($...$)
+            5. Build upon the previous hints, gradually guiding the student more toward the correct answer. 
+            6. Be concise, to the point, and a maximum of 50 words. 
+            7. NOT use the terms "previous attempts," "previous hints," "expected answer," or other prompt-related language directly. Those terms are only provided for context in generation of a hint concerned with the CURRENT step.
+            8. **IMPORTANT** NEVER give the answer to the current step. For example, DO NOT explicitly say divide both sides by 5 when the step asks how to isolate x in 5x = 3. Your job is to GUIDE the student, NOT give the answer directly. 
+
+            # STYLE #
+            Write in an informative and instructive style that would be helpful in aiding a student's understanding and intuition of the main concept involved in the step. The style should also be tailored to the perceived skill level of the user. For instance, if the step requires finding the derivative or using the power rule, explain it as if the student is enrolled in a high school introductory calculus class, using appropriate terminology and detail for that level. 
+
+            # TONE #
+            Write in a supportive and casual tone. Remember that your goal is to resemble a math tutor guiding a student through encouragement and reinforcement of key concepts.
+
+            # AUDIENCE #
+            The target audience is a high school or college student seeking help for their math homework in preparation for an upcoming exam.
+
+            # RESPONSE FORMAT #
+            ALL mathematical expressions should be written with proper LaTeX formatting. The hint should start with an explanation of why any potential previous attempts were wrong, and continues to build upon previous hints and attempts to solve the problem under a key concept.
+
             """
 
             response = self.client.chat.completions.create(
@@ -379,13 +520,11 @@ The problem to solve is: {problem}
                 ],
                 functions=functions,
                 function_call={"name": "generate_hint"},
-                temperature=0.7
             )
 
             if response.choices[0].message.function_call is not None:
                 result = json.loads(response.choices[0].message.function_call.arguments)
-                step.hint_count += 1
-                return result["hint"]
+                return "**Hint:** " + result["hint"]
             else:
                 raise Exception("No hint generated")
 
@@ -406,14 +545,17 @@ The problem to solve is: {problem}
                     for i, attempt in enumerate(step.user_attempts)
                 ])
                 steps_info += f"""
-Step {idx + 1}:
-Instruction: {step.instruction}
-Question: {step.question}
-Your Attempts:
-{attempts_text}
-Performance: {performance}
-"""
+                Step {idx + 1}:
+                Instruction: {step.instruction}
+                Question: {step.question}
+                Your Attempts:
+                {attempts_text}
+                Performance: {performance}
+                """
 
+            print("-" * 100)
+            print(steps_info)
+            print("-" * 100)
             prompt = f"""
 The student has completed solving the following problem:
 Problem: {solution.original_problem}
@@ -438,7 +580,7 @@ Make sure the problem summary:
 """
 
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "system",
@@ -449,7 +591,6 @@ Make sure the problem summary:
                         "content": prompt
                     }
                 ],
-                temperature=0.7
             )
 
             summary = response.choices[0].message.content
