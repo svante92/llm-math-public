@@ -13,7 +13,6 @@ from graph import generate_graph_from_query  # Import the graph generation funct
 # Load environment variables from .env file
 load_dotenv()
 API_KEY = os.getenv("OPENAI_API_KEY")  # Get the API key from the environment]
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 # Set this up at the start of your program
 logging.basicConfig(
@@ -44,7 +43,6 @@ class MathSolver:
     def __init__(self, api_key: str):
         """Initialize the OpenAI client"""
         self.client = openai.OpenAI(api_key=api_key)
-        self.deepseek_client = openai.OpenAI(api_key=OPENROUTER_API_KEY, base_url="https://openrouter.ai/api/v1")
         self.validate_system_prompt = """
         You are a helpful math assistant checking if a student’s answer is correct. Be lenient — if their answer is 
         mathematically equivalent to the correct one, even with minor formatting differences (like missing parentheses 
@@ -87,8 +85,6 @@ For each step, include:
 3. **Hints** — Based on the difficulty of the step, provide 1–3 hints that progressively help the student figure out *how* to complete the step. Hints may include formula reminders, strategy tips, or simplified versions of the task.
 
 4. **Review of Previous Step** — Give a concise summary of the prior step, including the correct answer, the core concept used, and how it connects to this step.
-
-5. **Answer** - The answer to the step should NOT be expliclty included in the step, but MUST be generated during the problem solution step generation. This is a required field.
 
 IMPORTANT FORMATTING RULES:
 - ALL mathematical expressions MUST be enclosed in LaTeX delimiters ($...$)
@@ -139,8 +135,8 @@ The problem to solve is: {problem}
         """
         
         try:
-            response = self.deepseek_client.chat.completions.create(
-                model="deepseek/deepseek-r1",
+            response = self.client.chat.completions.create(
+                model="o3-mini",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant"},
                     {
@@ -173,8 +169,9 @@ The problem to solve is: {problem}
                     "description": (
                         "Generate a detailed step-by-step solution for a math problem. "
                         "Each step must include 'instruction', 'question', 'answer', and 'hint_limit'. "
-                        "The 'answer' field MUST ALWAYS be filled with a best-effort attempt, even if uncertain. "
-                        "Never omit or leave it blank."
+                        "'answer' MUST ALWAYS be filled, even if it is a rough or uncertain best-effort guess. "
+                        "NEVER omit 'answer'. If unsure, provide the most reasonable attempt possible."
+                        "Include a graph query for each step if applicable."
                     ),
                     "parameters": {
                         "type": "object",
@@ -186,9 +183,9 @@ The problem to solve is: {problem}
                                     "properties": {
                                         "instruction": {"type": "string"},
                                         "question": {"type": "string"},
-                                        "answer": {"type": "string"},
+                                        "answer": {"type": "string",},
                                         "hint_limit": {"type": "integer"},
-                                        "graph_query": {"type": "string"}
+                                        "graph_query": {"type": "string"},
                                     },
                                     "required": ["instruction", "question", "answer", "hint_limit"],
                                     "additionalProperties": False
@@ -205,14 +202,13 @@ The problem to solve is: {problem}
 
             print("Calling API for solution steps")
             response = self.client.chat.completions.create(
-                model="gpt-4.1",
+                model="gpt-4o",
                 messages=[
-                    {"role": "system", "content": "You are a math teacher who takes a math problem and solution to that problem, and breaks down solution into clear steps. When calling the function `get_math_solution`, always fill in ALL required fields. **IMPORTANT** Make sure every step includes an `answer` string"},
+                    {"role": "system", "content": "You are a math teacher who takes a math problem and solution to that problem, and breaks down solution into clear steps. When calling the function `get_math_solution`, always fill in ALL required fields."},
                     {"role": "user", "content": self.format_prompt(problem_solution)}
                 ],
                 functions=functions,
                 function_call={"name": "get_math_solution"},
-                temperature=0.4,
             )
             print("API call completed")
             message = response.choices[0].message
@@ -253,7 +249,6 @@ The problem to solve is: {problem}
                 raise Exception("No function call in response")
 
         except Exception as e:
-            print(e)
             raise Exception(f"Error getting math solution: {str(e)}")
 
     def validate_step_answer(self, user_answer: str, correct_answer: str) -> bool:
@@ -291,92 +286,6 @@ The problem to solve is: {problem}
         except Exception as e:
             logging.error(f"Error dumping variable to file: {str(e)}")
     
-    def validate_second_stage(self, model1_output: str, user_answer: str, correct_answer: str, step_question: str) -> bool:
-        try:
-            
-            prompt = f"""
-            {step_question}:\nStudent's Answer: {user_answer}\nExpected Answer: {correct_answer}
-
-            ### MODEL1 OUTPUT ###
-            {model1_output}
-            """
-
-
-            functions = [
-                {
-                    "name": "validate_answer",
-                    "description": "Validate if the student's answer matches the expected answer.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "is_correct": {
-                                "type": "boolean",
-                                "description": "Whether the student's answer is correct or equivalent to the expected answer"
-                            },
-                            "explanation": {
-                                "type": "string",
-                                "description": "Explain to the student why the answer is correct or incorrect."
-                            }
-                        },
-                        "required": ["is_correct", "explanation"],
-                        "additionalProperties": False
-                    }
-                }
-            ]
-            response = self.client.chat.completions.create(
-                model="gpt-4.1",
-                messages=[
-                    {
-                        "role": "system", 
-                        "content": """You are a second AI model tasked with verifying whether the first model correctly evaluated a student's answer. 
-                                    You must determine two things:
-                                    1. Did the first model correctly mark the student's answer as correct or incorrect?
-                                    2. Did the first model's explanation follow the instructions: 
-                                    a) It must be brief, in plain English, speak directly to the student, avoid math terms, and NOT reveal the correct answer
-                                    b) It should only address significant math reasoning, not small algebra steps like multiplying by 1.
-                                    c) All mathematical expressions must be expressed in CORRECT Latex syntax, enclosed by $ on both sides. 
-                                    d) Do not use terms such as "expected answer" or other prompt-related language. The student does not know what "expected answer" means
-
-                                    e) If a question asks for components in a specific order, the student must list them in that exact order. Do not require labels or identifiers—just match the each component sequentially to the order in the expected answer.
-
-                                    ✅ If the values appear in the correct order, mark the answer correct.
-                                    ❌ If any part is out of order, mark it incorrect—even if all components are present.
-
-                                    **EXAMPLE**: If the question contains an integral from 1 to 3 over x^2, then
-                                    ✅ Correct Example: If the question asks for “upper limit, lower limit, integrand,” then “3, 1, x^2” is correct.
-                                    ❌ Incorrect Example: “x^2, 1, 3” is wrong, even if the values are all there.
-
-                                    Do not rewrite or reorder the student's answer in explanations. Maintain the original order given in the question
-
-                                    ## KEY POINT ##
-                                    If the first model’s evaluation is fully correct and its explanation follows the rules, return its output exactly.
-                                    If either the correctness judgment or explanation is wrong or violates the guidelines, return a corrected version.
-                                    """
-                    },
-                    {
-                        "role": "user", 
-                        "content": prompt
-                    }
-                ],
-                functions=functions,
-                function_call={"name": "validate_answer"},
-                temperature=0.3
-            )
-
-            if response.choices[0].message.function_call is not None:
-                result = json.loads(response.choices[0].message.function_call.arguments)
-
-                # Ensure both values are returned
-                if "is_correct" not in result or "explanation" not in result:
-                    raise ValueError("Missing required fields in response")
-                return result
-
-
-        except Exception as e:
-            logging.error(f"Error validating answer with model2: {str(e)}")
-            raise Exception(f"Error validating answer with model2: {str(e)}")
-
-    
     def validate_step_answer_llm(self, user_answer: str, correct_answer: str, step_question: str) -> bool:
         """
         Use the LLM to compare the user's answer and the expected answer.
@@ -413,7 +322,7 @@ The problem to solve is: {problem}
 
             # Add logging to see the actual API response
             response = self.client.chat.completions.create(
-                model="gpt-4.1",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "system", 
@@ -426,26 +335,20 @@ The problem to solve is: {problem}
                 ],
                 functions=functions,
                 function_call={"name": "validate_answer"},
-                temperature=0.3
             )
             
             # Log the full response for debugging
             logging.debug(f"API Response: {response}")
             
             if response.choices[0].message.function_call is not None:
-                model1_result = json.loads(response.choices[0].message.function_call.arguments)
-                logging.debug(f"Parsed result: {model1_result}")  # Log the parsed result
-                print("MODEL1_RESULT")
-                print(model1_result)
-                model2_result = self.validate_second_stage(model1_result, user_answer, correct_answer, step_question)
-                print("MODEL2_RESULT")
-                print(model2_result)
+                response = json.loads(response.choices[0].message.function_call.arguments)
+                logging.debug(f"Parsed result: {response}")  # Log the parsed result
                 
                 # Ensure both values are returned
-                if "is_correct" not in model2_result or "explanation" not in model2_result:
+                if "is_correct" not in response or "explanation" not in response:
                     raise ValueError("Missing required fields in response")
                 
-                return model2_result["is_correct"], model2_result["explanation"]
+                return response["is_correct"], response["explanation"]
             else:
                 raise Exception("No function call in response")
 
@@ -512,7 +415,7 @@ The problem to solve is: {problem}
             """
 
             response = self.client.chat.completions.create(
-                model="gpt-4.1",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "system", 
@@ -525,7 +428,6 @@ The problem to solve is: {problem}
                 ],
                 functions=functions,
                 function_call={"name": "answer_custom_question"},
-                temperature=0.7
             )
 
             if response.choices[0].message.function_call is not None:
@@ -605,7 +507,7 @@ The problem to solve is: {problem}
             """
 
             response = self.client.chat.completions.create(
-                model="gpt-4.1",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "system", 
@@ -618,7 +520,6 @@ The problem to solve is: {problem}
                 ],
                 functions=functions,
                 function_call={"name": "generate_hint"},
-                temperature=0.7
             )
 
             if response.choices[0].message.function_call is not None:
@@ -679,7 +580,7 @@ Make sure the problem summary:
 """
 
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "system",
@@ -690,7 +591,6 @@ Make sure the problem summary:
                         "content": prompt
                     }
                 ],
-                temperature=0.7
             )
 
             summary = response.choices[0].message.content

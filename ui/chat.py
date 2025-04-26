@@ -455,7 +455,7 @@ def display_chat_history(chat_container):
 
                         if current_step:
                             remaining_hints = max(0, current_step.hint_limit - current_step.hint_count)
-                            st.caption(f"Remaining hints: {remaining_hints}")
+                            st.caption(f"Remaining hints in current step: {remaining_hints}")
 
     if st.session_state.problem_state['steps'] is not None and st.session_state.problem_state['awaiting_answer']:
         if not any(msg.get('requires_input') for msg in st.session_state.chat_history[-1:]):
