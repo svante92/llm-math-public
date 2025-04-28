@@ -131,7 +131,7 @@ def handle_user_input():
                         if st.session_state.problem_state['current_step'] >= len(steps):
                             st.session_state.chat_history.append({
                                 "role": "assistant",
-                                "content": f"Great job! The final answer is: {st.session_state.problem_state['final_answer']}",
+                                "content": f"The final answer is: ${st.session_state.problem_state['final_answer']}$",
                                 "timestamp": time.strftime("%H:%M"),
                                 "requires_input": False
                             })
@@ -206,7 +206,7 @@ def handle_user_input():
                             if st.session_state.problem_state['current_step'] >= len(steps):
                                 st.session_state.chat_history.append({
                                     "role": "assistant",
-                                    "content": f"The final answer is: {st.session_state.problem_state['final_answer']}",
+                                    "content": f"Great job! The final answer is: {st.session_state.problem_state['final_answer']}",
                                     "timestamp": time.strftime("%H:%M"),
                                     "requires_input": False
                                 })
@@ -344,22 +344,29 @@ def display_chat_history(chat_container):
                             st.write(prefix.strip())
 
                         st.write("The final answer is:")
-                        final_answer = final_answer.strip().strip('$')
-                        st.latex(final_answer)
+                        st.write(final_answer.strip())
                     else:
                         col1, col2 = st.columns([3, 1])
                         with col1:
                             parts = content.split("$")
+                            line = ""
                             for i, part in enumerate(parts):
-                                if i % 2 == 0:
-                                    if part.strip():
-                                        if part.startswith("Step"):
-                                            st.markdown(f"**{part}**")
-                                        else:
-                                            st.write(part.strip())
-                                else:
-                                    if part.strip():
+                                if part.strip():
+                                    if i % 2 == 1 and len(part.strip()) > 5:
+                                        if line.strip():
+                                            st.write(line.strip())  # flush any accumulated text
+                                            line = ""
                                         st.latex(part.strip())
+                                    else:
+                                        if i % 2 == 1:
+                                            line += f" ${part.strip()}$ "
+                                        else:
+                                            if part.startswith("Step"):
+                                                st.markdown(f"**{part.strip()}**")
+                                            else:
+                                                line += part.strip()
+                            if line.strip():
+                                st.write(line.strip())
 
                         with col2:
                             if message.get("requires_input"):
@@ -396,12 +403,12 @@ def display_chat_history(chat_container):
                                     remaining_hints = max(0, current_step.hint_limit - current_step.hint_count)
                                     if remaining_hints > 0:
                                         previous_attempts = [msg["content"] for msg in st.session_state.chat_history if msg["role"] == "user" and msg.get("step_num") == step_num]
-                                        previous_hints = [msg["content"] for msg in st.session_state.chat_history if msg["role"] == "assistant" and msg.get("step_num") == step_num]
+                                        previous_hints = [msg["content"] for msg in st.session_state.chat_history if msg["role"] == "assistant_hint" and msg.get("step_num") == step_num]
                                         hint = st.session_state.solver.generate_hint(current_step, previous_attempts, previous_hints)
                                         current_step.hint_count += 1
 
                                         st.session_state.chat_history.append({
-                                            "role": "assistant",
+                                            "role": "assistant_hint",
                                             "content": hint,
                                             "timestamp": time.strftime("%H:%M"),
                                             "requires_input": False,

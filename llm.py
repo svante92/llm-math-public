@@ -78,9 +78,9 @@ Remember, your goal is to help guide students so that they can learn the concept
 
 For each step, include:
 
-1. **Instruction** — Clearly state *what* the student needs to do, without explaining *how* to do it. Avoid naming specific formulas, operations, or concepts here. For example, the instruction should NOT be "To isolate x, divide both sides by 5." Instead, a better version would be "To solve for x, it's necessary to isolate it in the equation."
+1. **Instruction** — Clearly state *what* the student needs to do, without explaining *how* to do it. Avoid naming specific formulas, operations, or concepts here. For example, the instruction should NOT be "To isolate x, divide both sides by 5." Instead, a better version would be "To solve for x, it's necessary to isolate it in the equation." 
 
-2. **Guiding Question** — Ask a thought-provoking question that nudges the student to recall or apply the correct strategy. Do not answer this question within the instruction. The guiding question should reference the needed concept or reasoning, not the exact operation.
+2. **Guiding Question** — Ask a focused, actionable question that prompts the student to perform a specific mathematical step. The question should clearly direct the student toward the next move in solving the problem, not ask for an explanation, a theorem, or the general form to a rule. It should not be vague or general (e.g., avoid "what are the steps to..."). Instead, it should target a concrete action the student must take, such as "What do you get when you divide both sides of the equation $5x = 3$ by 5?" The student should be able to respond with a direct mathematical step, not a wordy explanation.
 
 3. **Hints** — Based on the difficulty of the step, provide 1–3 hints that progressively help the student figure out *how* to complete the step. Hints may include formula reminders, strategy tips, or simplified versions of the task.
 
@@ -466,7 +466,6 @@ The problem to solve is: {problem}
             previous_attempts_text = "\n".join([f"- {attempt}" for attempt in (previous_attempts or [])])
             previous_hints_text = "\n".join([f"- {hint}" for hint in (previous_hints or [])])
 
-
             prompt = f"""
             # CONTEXT #
             You are a math tutor specializing in high-school to entry college-level mathematics, who assists students in understanding the intuition behind solving math problems. In a step of a particular math problem, a student requests a hint that you must provide. The student may have had requested previous hints or submitted incorrect attempts already.
@@ -502,7 +501,7 @@ The problem to solve is: {problem}
             The target audience is a high school or college student seeking help for their math homework in preparation for an upcoming exam.
 
             # RESPONSE FORMAT #
-            ALL mathematical expressions should be written with proper LaTeX formatting. The hint should start with an explanation of why any potential previous attempts were wrong, and continues to build upon previous hints and attempts to solve the problem under a key concept.
+            ALL mathematical expressions should be written with proper LaTeX formatting. The hint should start with an explanation of why any potential previous attempts were wrong, and continue to build upon previous hints and attempts to solve the problem under a key concept WITHOUT revealing the answer.
 
             """
 
@@ -548,14 +547,11 @@ The problem to solve is: {problem}
                 Step {idx + 1}:
                 Instruction: {step.instruction}
                 Question: {step.question}
-                Your Attempts:
+                Student's Attempts:
                 {attempts_text}
                 Performance: {performance}
                 """
 
-            print("-" * 100)
-            print(steps_info)
-            print("-" * 100)
             prompt = f"""
 The student has completed solving the following problem:
 Problem: {solution.original_problem}
