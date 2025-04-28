@@ -19,12 +19,13 @@ def handle_user_input():
         if submit_button:
             st.session_state.user_input_submitted = True
             st.session_state.user_input = st.session_state.input_box
-            st.session_state.chat_history.append({
-                "role": "user",
-                "content": st.session_state.user_input,
-                "timestamp": time.strftime("%H:%M"),
-                "requires_input": False,
-            })
+            if len(st.session_state.user_input) > 0:
+                st.session_state.chat_history.append({
+                    "role": "user",
+                    "content": st.session_state.user_input,
+                    "timestamp": time.strftime("%H:%M"),
+                    "requires_input": False,
+                })
             # Update the input buffer when the form is submitted
             st.session_state.input_buffer = st.session_state.input_box
 
@@ -49,7 +50,7 @@ def handle_user_input():
 
                         st.session_state.chat_history.append({
                             "role": "assistant",
-                            "content": f"Let's solve this problem step by step: {user_input}",
+                            "content": f"Let's solve this problem step by step!",
                             "timestamp": time.strftime("%H:%M"),
                             "requires_input": False
                         })
@@ -188,11 +189,15 @@ def handle_user_input():
                     else:
                         current_step.attempt_count += 1
                         remaining_attempts = 3 - current_step.attempt_count
+                        print("EXPECTED ANSWER", expected_answer)
 
                         if current_step.attempt_count >= 3:
+                            correct_answer = expected_answer
+                            if expected_answer[0] != 'T' and expected_answer[0] != '$':
+                                correct_answer = f"${expected_answer}$"
                             st.session_state.chat_history.append({
                                 "role": "assistant",
-                                "content": f"❌ That's not quite right. {explanation}\nThe correct answer is: ${expected_answer}$",
+                                "content": f"❌ That's not quite right. {explanation}\nThe correct answer is: {correct_answer}",
                                 "timestamp": time.strftime("%H:%M"),
                                 "requires_input": False,
                                 "step_num": current_step_index
@@ -204,9 +209,12 @@ def handle_user_input():
                             st.session_state.input_buffer = ''
                             st.session_state.reset_input_box = True
                             if st.session_state.problem_state['current_step'] >= len(steps):
+                                correct_answer = st.session_state.problem_state['final_answer']
+                                if st.session_state.problem_state['final_answer'][0] != 'T' and st.session_state.problem_state['final_answer'][0] != '$':
+                                    correct_answer = f"${expected_answer}$"
                                 st.session_state.chat_history.append({
                                     "role": "assistant",
-                                    "content": f"Great job! The final answer is: {st.session_state.problem_state['final_answer']}",
+                                    "content": f"Great job! The final answer is: {correct_answer}",
                                     "timestamp": time.strftime("%H:%M"),
                                     "requires_input": False
                                 })
@@ -353,7 +361,7 @@ def display_chat_history(chat_container):
                             for i, part in enumerate(parts):
                                 print(f"Part {i}: {part.strip()}")
                                 if part.strip():
-                                    if i % 2 == 1 and len(part.strip()) > 5:
+                                    if i % 2 == 1 and len(part.strip()) > 10:
                                         if line.strip():
                                             st.write(line.strip())  # flush any accumulated text
                                             line = ""

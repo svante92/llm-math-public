@@ -43,7 +43,21 @@ class MathSolver:
     def __init__(self, api_key: str):
         """Initialize the OpenAI client"""
         self.client = openai.OpenAI(api_key=api_key)
-        self.validate_system_prompt = """
+        self.latex_formatting = r"""IMPORTANT FORMATTING RULES:
+        - ALL mathematical expressions MUST be enclosed in LaTeX delimiters ($...$)
+        - For complex mathematical structures (matrices, aligned equations, etc.):
+            - Use \begin{...} and \end{...} environments inside LaTeX delimiters
+            - Example for matrices: $\begin{bmatrix} a & b \\ c & d \end{bmatrix}$
+            - Example for aligned equations: $\begin{align} x &= 2 \\ y &= 3 \end{align}$
+        - For inline expressions:
+            - Single variables: $x$, $n$
+            - Powers: $x^2$, $n^3$
+            - Fractions: $\frac{dx}{dy}$
+            - Integrals: $\int x^2 \, dx$
+        - NEVER mix plain text and mathematical symbols
+        - NEVER leave LaTeX commands undelimited
+        """
+        self.validate_system_prompt = f"""
         You are a helpful math assistant checking if a student’s answer is correct. Be lenient — if their answer is 
         mathematically equivalent to the correct one, even with minor formatting differences (like missing parentheses 
         or writing cosx instead of cos(x)), mark it as correct.
@@ -67,6 +81,8 @@ class MathSolver:
         - Don’t reveal the correct answer
         - Focus only on major math concepts, not small simplifications
         - Don't use prompt-related language such as 'expected answer'
+
+        {self.latex_formatting}
         """
 
     def format_prompt(self, problem: str) -> str:
@@ -92,27 +108,15 @@ For each step, include:
 
 4. **Review of Previous Step** — Give a concise summary of the prior step, including the correct answer, the core concept used, and how it connects to this step.
 
-IMPORTANT FORMATTING RULES:
-- ALL mathematical expressions MUST be enclosed in LaTeX delimiters ($...$)
-- For complex mathematical structures (matrices, aligned equations, etc.):
-    - Use \\begin{{...}} and \\end{{...}} environments inside LaTeX delimiters
-    - Example for matrices: $\\begin{{bmatrix}} a & b \\\\ c & d \\end{{bmatrix}}$
-    - Example for aligned equations: $\\begin{{align}} x &= 2 \\\\ y &= 3 \\end{{align}}$
-- For inline expressions:
-    - Single variables: $x$, $n$
-    - Powers: $x^2$, $n^3$
-    - Fractions: $\\frac{{dx}}{{dy}}$
-    - Integrals: $\\int x^2 dx$
-- NEVER mix plain text and mathematical symbols
-- NEVER leave LaTeX commands undelimited
+{self.latex_formatting}
 - For the final answer:
-    - Present it as a standalone LaTeX expression
+    - Present it as a standalone LaTeX expression WITH DELIMITERS ($...$)
     - Remove any trailing punctuation
-    - If text is needed, keep it outside the LaTeX delimiters
-    - Example: The solution is $x = 5$ units
+    - Example: $x = 5$
 
 ## IMPORTANT ##
 Double check Latex syntax to ensure no missing \ or letters are missing.
+A common mistake is to write rac{{dx}}{{dy}} instead of including the backslash: \\frac{{dx}}{{dy}}
 
 GRAPH QUERY RULES:
 - For most steps, show a graph to help the user understand a concept. Show graphs for steps with equations that can be represented as a graph
@@ -310,14 +314,17 @@ The problem to solve is: {problem}
                             },
                             "explanation": {
                                 "type": "string",
-                                "description": """Explain to the student why the answer is correct or incorrect. Make sure to follow these steps:
+                                "description": f"""Explain to the student why the answer is correct or incorrect. Make sure to follow these steps:
                                 1. Do not include any math terms in the answer, just plain English. 
                                 2. Make sure it's brief.
                                 3. DO NOT REVEAL THE CORRECT ANSWER, only explain why the answer is correct or incorrect.
                                 4. Make sure to address the student directly like you're speaking to them.
                                 5. Only talk about the significant and relevant math concepts for that step, meaning smaller algebraic operations shouldn’t be mentioned. For example, if the correct answer is 8(x-2) and the student answered 8(x-2)*1, you don’t have to state the fact that these are equivalent expressions in the explanation. 
                                 ## IMPORTANT ##
-                                6. DO NOT use explicitly prompt-related language such as 'expected answer' or 'both expressions' when comparing the student's answer to the expected answer. The expected answer is only provided for context in validating the student's answer, and should be tailored toward the student."""
+                                6. DO NOT use explicitly prompt-related language such as 'expected answer' or 'both expressions' when comparing the student's answer to the expected answer. The expected answer is only provided for context in validating the student's answer, and should be tailored toward the student.
+                                
+                                {self.latex_formatting}
+                                """
                             }
                         },
                         "required": ["is_correct", "explanation"],
