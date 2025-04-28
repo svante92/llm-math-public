@@ -1,7 +1,7 @@
 {
   "is_correct": false,
-  "explanation": "Your answer shows the general rule but doesn't substitute the specific expressions. You need to plug in the actual functions you found for clarity.",
-  "user_answer": "f  \u2032  (x)=g(b(x))b  \u2032  (x)\u2212g(a(x))a  \u2032  (x)",
-  "correct_answer": "Substitute the expressions into the formula to get $f'(x)=e^{(\\cos x)^2}(-\\sin x)-e^{(\\sin x)^2}(\\cos x)$.",
-  "step_question": "After identifying $g(t)$, $a(x)$, $b(x)$, and their derivatives, what is the next step to express $f'(x)$?"
+  "explanation": "The answer isn't right because when you take the reciprocal of the given expression, you should place the entire expression in the denominator. Here, you didn't correctly take the reciprocal of the original equation.",
+  "user_answer": "y = -2x^(-2) - 1/C",
+  "correct_answer": "y = -\\frac{1}{(x^2 / 2) + C}",
+  "step_question": "What is the expression for $y$ when you take the reciprocal of both sides of $\\frac{1}{y} = -\\left( \\frac{x^2}{2} + C \\right)$?"
 }

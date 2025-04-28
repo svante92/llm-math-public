@@ -48,6 +48,12 @@ class MathSolver:
         mathematically equivalent to the correct one, even with minor formatting differences (like missing parentheses 
         or writing cosx instead of cos(x)), mark it as correct.
 
+        ##EXAMPLES##
+        If the student answers 2(x-2) and the expected answer is 2(x-2)*1, mark it as correct.
+        If the student answers 2 - x and the expected answer is -1*(x-2), mark it as correct.
+        If the student answers integral(-5x) and the expected answer is -integral(5x), mark it as correct.
+        If both answers are MATHEMATICALLY EQUIVALENT but in different formats, mark it as CORRECT.
+
         However, if the answer involves multiple parts (e.g., an integrand, bounds, and variable), the student must follow 
         the same order as the expected answer. If the order is wrong, mark it incorrect.
 
@@ -78,9 +84,9 @@ Remember, your goal is to help guide students so that they can learn the concept
 
 For each step, include:
 
-1. **Instruction** — Clearly state *what* the student needs to do, without explaining *how* to do it. Avoid naming specific formulas, operations, or concepts here. For example, the instruction should NOT be "To isolate x, divide both sides by 5." Instead, a better version would be "To solve for x, it's necessary to isolate it in the equation."
+1. **Instruction** — Clearly state *what* the student needs to do, without explaining *how* to do it. Avoid naming specific formulas, operations, or concepts here. For example, the instruction should NOT be "To isolate x, divide both sides by 5." Instead, a better version would be "To solve for x, it's necessary to isolate it in the equation." 
 
-2. **Guiding Question** — Ask a thought-provoking question that nudges the student to recall or apply the correct strategy. Do not answer this question within the instruction. The guiding question should reference the needed concept or reasoning, not the exact operation.
+2. **Guiding Question** — Ask a focused, actionable question that prompts the student to perform a specific mathematical step. The question should clearly direct the student toward the next move in solving the problem, not ask for an explanation, a theorem, or the general form to a rule. It should not be vague or general (e.g., avoid "what are the steps to..."). Instead, it should target a concrete action the student must take, such as "What do you get when you divide both sides of the equation $5x = 3$ by 5?" The student should be able to respond with a direct mathematical step, not a wordy explanation.
 
 3. **Hints** — Based on the difficulty of the step, provide 1–3 hints that progressively help the student figure out *how* to complete the step. Hints may include formula reminders, strategy tips, or simplified versions of the task.
 
@@ -311,7 +317,7 @@ The problem to solve is: {problem}
                                 4. Make sure to address the student directly like you're speaking to them.
                                 5. Only talk about the significant and relevant math concepts for that step, meaning smaller algebraic operations shouldn’t be mentioned. For example, if the correct answer is 8(x-2) and the student answered 8(x-2)*1, you don’t have to state the fact that these are equivalent expressions in the explanation. 
                                 ## IMPORTANT ##
-                                6. DO NOT use prompt-related language such as 'expected answer.'"""
+                                6. DO NOT use explicitly prompt-related language such as 'expected answer' or 'both expressions' when comparing the student's answer to the expected answer. The expected answer is only provided for context in validating the student's answer, and should be tailored toward the student."""
                             }
                         },
                         "required": ["is_correct", "explanation"],
@@ -466,7 +472,6 @@ The problem to solve is: {problem}
             previous_attempts_text = "\n".join([f"- {attempt}" for attempt in (previous_attempts or [])])
             previous_hints_text = "\n".join([f"- {hint}" for hint in (previous_hints or [])])
 
-
             prompt = f"""
             # CONTEXT #
             You are a math tutor specializing in high-school to entry college-level mathematics, who assists students in understanding the intuition behind solving math problems. In a step of a particular math problem, a student requests a hint that you must provide. The student may have had requested previous hints or submitted incorrect attempts already.
@@ -502,7 +507,7 @@ The problem to solve is: {problem}
             The target audience is a high school or college student seeking help for their math homework in preparation for an upcoming exam.
 
             # RESPONSE FORMAT #
-            ALL mathematical expressions should be written with proper LaTeX formatting. The hint should start with an explanation of why any potential previous attempts were wrong, and continues to build upon previous hints and attempts to solve the problem under a key concept.
+            ALL mathematical expressions should be written with proper LaTeX formatting. The hint should start with an explanation of why any potential previous attempts were wrong, and continue to build upon previous hints and attempts to solve the problem under a key concept WITHOUT revealing the answer.
 
             """
 
@@ -548,14 +553,11 @@ The problem to solve is: {problem}
                 Step {idx + 1}:
                 Instruction: {step.instruction}
                 Question: {step.question}
-                Your Attempts:
+                Student's Attempts:
                 {attempts_text}
                 Performance: {performance}
                 """
 
-            print("-" * 100)
-            print(steps_info)
-            print("-" * 100)
             prompt = f"""
 The student has completed solving the following problem:
 Problem: {solution.original_problem}
