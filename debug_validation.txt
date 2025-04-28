@@ -1,7 +1,7 @@
 {
-  "is_correct": true,
-  "explanation": "Great job! You added the numbers correctly to get the sum.",
-  "user_answer": "15",
-  "correct_answer": "15",
-  "step_question": "What is the final sum for $\u0001\u03a3_{i=1}^5 i$ after adding all the terms?"
+  "is_correct": false,
+  "explanation": "The answer isn't right because when you take the reciprocal of the given expression, you should place the entire expression in the denominator. Here, you didn't correctly take the reciprocal of the original equation.",
+  "user_answer": "y = -2x^(-2) - 1/C",
+  "correct_answer": "y = -\\frac{1}{(x^2 / 2) + C}",
+  "step_question": "What is the expression for $y$ when you take the reciprocal of both sides of $\\frac{1}{y} = -\\left( \\frac{x^2}{2} + C \\right)$?"
 }

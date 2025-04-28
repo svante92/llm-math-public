@@ -192,7 +192,7 @@ def handle_user_input():
                         if current_step.attempt_count >= 3:
                             st.session_state.chat_history.append({
                                 "role": "assistant",
-                                "content": f"❌ That's not quite right. {explanation}\nThe correct answer is: {expected_answer}",
+                                "content": f"❌ That's not quite right. {explanation}\nThe correct answer is: ${expected_answer}$",
                                 "timestamp": time.strftime("%H:%M"),
                                 "requires_input": False,
                                 "step_num": current_step_index
@@ -328,7 +328,7 @@ def display_chat_history(chat_container):
             if "assistant" in message["role"]:
                 avatar = "🤖"
             else:
-                avatar = "🐷"
+                avatar = "🎓"
             with st.chat_message(message["role"], avatar=avatar):
                 st.markdown(f"<div class='step-indicator'>{message['timestamp']}</div>", unsafe_allow_html=True)
                 if message["role"] == "user":
@@ -351,6 +351,7 @@ def display_chat_history(chat_container):
                             parts = content.split("$")
                             line = ""
                             for i, part in enumerate(parts):
+                                print(f"Part {i}: {part.strip()}")
                                 if part.strip():
                                     if i % 2 == 1 and len(part.strip()) > 5:
                                         if line.strip():

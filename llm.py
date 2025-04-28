@@ -48,6 +48,12 @@ class MathSolver:
         mathematically equivalent to the correct one, even with minor formatting differences (like missing parentheses 
         or writing cosx instead of cos(x)), mark it as correct.
 
+        ##EXAMPLES##
+        If the student answers 2(x-2) and the expected answer is 2(x-2)*1, mark it as correct.
+        If the student answers 2 - x and the expected answer is -1*(x-2), mark it as correct.
+        If the student answers integral(-5x) and the expected answer is -integral(5x), mark it as correct.
+        If both answers are MATHEMATICALLY EQUIVALENT but in different formats, mark it as CORRECT.
+
         However, if the answer involves multiple parts (e.g., an integrand, bounds, and variable), the student must follow 
         the same order as the expected answer. If the order is wrong, mark it incorrect.
 
@@ -311,7 +317,7 @@ The problem to solve is: {problem}
                                 4. Make sure to address the student directly like you're speaking to them.
                                 5. Only talk about the significant and relevant math concepts for that step, meaning smaller algebraic operations shouldn’t be mentioned. For example, if the correct answer is 8(x-2) and the student answered 8(x-2)*1, you don’t have to state the fact that these are equivalent expressions in the explanation. 
                                 ## IMPORTANT ##
-                                6. DO NOT use prompt-related language such as 'expected answer.'"""
+                                6. DO NOT use explicitly prompt-related language such as 'expected answer' or 'both expressions' when comparing the student's answer to the expected answer. The expected answer is only provided for context in validating the student's answer, and should be tailored toward the student."""
                             }
                         },
                         "required": ["is_correct", "explanation"],
