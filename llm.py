@@ -65,6 +65,7 @@ class MathSolver:
         ##EXAMPLES##
         If the student answers 2(x-2) and the expected answer is 2(x-2)*1, mark it as correct.
         If the student answers 2 - x and the expected answer is -1*(x-2), mark it as correct.
+        If the student answers -6x+30 and the expected answer is -6(x-5), mark it as correct.
         If the student answers integral(-5x) and the expected answer is -integral(5x), mark it as correct.
         If both answers are MATHEMATICALLY EQUIVALENT but in different formats, mark it as CORRECT.
 
@@ -102,7 +103,10 @@ For each step, include:
 
 1. **Instruction** — Clearly state *what* the student needs to do, without explaining *how* to do it. Avoid naming specific formulas, operations, or concepts here. For example, the instruction should NOT be "To isolate x, divide both sides by 5." Instead, a better version would be "To solve for x, it's necessary to isolate it in the equation." 
 
-2. **Guiding Question** — Ask a focused, actionable question that prompts the student to perform a specific mathematical step. The question should clearly direct the student toward the next move in solving the problem, not ask for an explanation, a theorem, or the general form to a rule. It should not be vague or general (e.g., avoid "what are the steps to..."). Instead, it should target a concrete action the student must take, such as "What do you get when you divide both sides of the equation $5x = 3$ by 5?" The student should be able to respond with a direct mathematical step, not a wordy explanation.
+2. **Guiding Question** — Ask a focused, actionable question that prompts the student to perform a specific mathematical step. The question should clearly direct the student toward the next move in solving the problem, not ask for an explanation, a theorem, or the general form to a rule. It should not be vague or general (e.g., avoid "what are the steps to..."). Instead, it should target a concrete action the student must take, such as "What do you get when you divide both sides of the equation $5x = 3$ by 5?" The student should understand that they need to perform a mathematical operation, not provide a explanation. DO NOT use 'how' or 'why' in the question.
+
+    ❌ BAD Example: "How do you find the derivative of an integral with variable limits?"
+    ✅ GOOD Example: "What is the derivative of y = 5x with respect to x?"
 
 3. **Hints** — Based on the difficulty of the step, provide 1–3 hints that progressively help the student figure out *how* to complete the step. Hints may include formula reminders, strategy tips, or simplified versions of the task.
 
@@ -333,37 +337,49 @@ The problem to solve is: {problem}
                 }
             ]
 
-            # Add logging to see the actual API response
-            response = self.client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {
-                        "role": "system", 
-                        "content": self.validate_system_prompt
-                    },
-                    {
-                        "role": "user", 
-                        "content": f"{step_question}:\nStudent's Answer: {user_answer}\nExpected Answer: {correct_answer}"
-                    }
-                ],
-                functions=functions,
-                function_call={"name": "validate_answer"},
-            )
-            
-            # Log the full response for debugging
-            logging.debug(f"API Response: {response}")
-            
-            if response.choices[0].message.function_call is not None:
-                response = json.loads(response.choices[0].message.function_call.arguments)
-                logging.debug(f"Parsed result: {response}")  # Log the parsed result
+            # Self-consistency: Run function three times and take majority vote
+            judgement_explanation = {}
+            true_count = false_count = 0
+            sample_count = 0
+
+            while sample_count < 3:
+                response = self.client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {
+                            "role": "system", 
+                            "content": self.validate_system_prompt
+                        },
+                        {
+                            "role": "user", 
+                            "content": f"{step_question}:\nStudent's Answer: {user_answer}\nExpected Answer: {correct_answer}"
+                        }
+                    ],
+                    functions=functions,
+                    function_call={"name": "validate_answer"},
+                )
+                if response.choices[0].message.function_call is not None:
+                    response = json.loads(response.choices[0].message.function_call.arguments)
+                    if "is_correct" not in response or "explanation" not in response:
+                        continue
+                    sample_count += 1
+                    judgement = response["is_correct"]
+                    judgement_explanation[judgement] = response["explanation"]
+                    if judgement:
+                        true_count += 1
+                    else:
+                        false_count += 1
+                else:
+                    raise Exception("No function call in response")
                 
-                # Ensure both values are returned
-                if "is_correct" not in response or "explanation" not in response:
-                    raise ValueError("Missing required fields in response")
-                
-                return response["is_correct"], response["explanation"]
-            else:
-                raise Exception("No function call in response")
+            print("-" * 100)
+            print(f"True count: {true_count}, False count: {false_count}")
+            print("-" * 100)
+            
+            # Determine the final judgement based on the majority
+            if true_count > false_count:
+                return True, judgement_explanation[True]
+            return False, judgement_explanation[False]
 
         except Exception as e:
             logging.error(f"Error validating answer with LLM: {str(e)}")

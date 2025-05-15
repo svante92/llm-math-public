@@ -1,7 +1,7 @@
 {
-  "is_correct": false,
-  "explanation": "Your answer, $k$, does not seem to relate to the problem given. You are asked to solve for $x$. Follow the steps to isolate $x$ and complete the equation to get the correct answer. Try solving it again.",
-  "user_answer": "k",
-  "correct_answer": "x = \\frac{40}{9}",
-  "step_question": "What is the simplified form after multiplying $(\\frac{5}{3}) \\times (\\frac{3}{5})x = (\\frac{5}{3}) \\times (\\frac{8}{3})$?"
+  "is_correct": true,
+  "explanation": "Your answer is correct. You accurately found the derivative of the function and included the multiplication by the constant $3$.",
+  "user_answer": "-6(5-x)",
+  "correct_answer": "The derivative of $f(x)$ is $-6(5-x)$.",
+  "step_question": "What is the derivative of $f(x) = 3(5-x)^2$ after multiplying by the constant 3?"
 }
